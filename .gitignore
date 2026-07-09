@@ -1,0 +1,39 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+.pnpm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.development
+.env*.local
+
+# Database fallbacks and local SQLite
+*.db
+*.db-journal
+*.sqlite
+
+# Terraform local folders & state
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# IDE and OS files
+.DS_Store
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Large archives and binaries
+*.zip
+*.tar.gz
+*.tgz
