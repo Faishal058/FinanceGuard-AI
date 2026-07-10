@@ -1,15 +1,26 @@
 import { createClient, Client } from '@libsql/client'
 import { PromptRegistry } from './prompt-registry'
 
-// Absolute path to the SQLite file in the workspace root
-const dbPath = 'd:/FinanceGuard/financeguard.db'
-const dbUrl = `file:${dbPath}`
-
 let clientInstance: Client | null = null
 
 export function getDbClient(): Client {
-  if (!clientInstance) {
-    clientInstance = createClient({ url: dbUrl })
+  if (clientInstance) return clientInstance
+
+  const url = process.env.DATABASE_URL
+  const authToken = process.env.DATABASE_AUTH_TOKEN
+
+  if (url) {
+    console.log('Connecting to cloud LibSQL database...')
+    clientInstance = createClient({
+      url,
+      authToken,
+    })
+  } else {
+    // Absolute path to the SQLite file in the workspace root
+    const dbPath = 'd:/FinanceGuard/financeguard.db'
+    clientInstance = createClient({
+      url: `file:${dbPath}`,
+    })
   }
   return clientInstance
 }

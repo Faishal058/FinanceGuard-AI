@@ -1,0 +1,49 @@
+name: CI/CD Production Build & Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    name: Build Docker Image & Deploy to AWS EKS
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Log in to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and Push Docker Image to ECR
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: Dockerfile
+        push: true
+        tags: |
+          ${{ steps.login-ecr.outputs.registry }}/financeguard-app:latest
+          ${{ steps.login-ecr.outputs.registry }}/financeguard-app:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Update EKS Kubeconfig
+      run: |
+        aws eks update-kubeconfig --region us-east-1 --name financeguard-cluster
+
+    - name: Deploy to Kubernetes Cluster (EKS)
+      run: |
+        kubectl set image deployment/financeguard-app-deployment app=${{ steps.login-ecr.outputs.registry }}/financeguard-app:${{ github.sha }}
+        kubectl rollout status deployment/financeguard-app-deployment

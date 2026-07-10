@@ -254,3 +254,19 @@ resource "aws_elasticache_subnet_group" "redis_subnets" {
   name       = "financeguard-redis-subnet-group"
   subnet_ids = [aws_subnet.private_1.id, aws_subnet.private_2.id]
 }
+
+# AWS Secrets Manager for FinanceGuard Credentials
+resource "aws_secretsmanager_secret" "api_secrets" {
+  name                    = "financeguard/production-secrets"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "api_secrets_val" {
+  secret_id = aws_secretsmanager_secret.api_secrets.id
+  secret_string = jsonencode({
+    OPENAI_API_KEY      = "placeholder-replace-in-aws-console"
+    ENKRYPT_API_KEY     = "placeholder-replace-in-aws-console"
+    QDRANT_API_KEY      = "placeholder-replace-in-aws-console"
+    DATABASE_AUTH_TOKEN = "placeholder-replace-in-aws-console"
+  })
+}
