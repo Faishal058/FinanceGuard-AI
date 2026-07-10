@@ -2,6 +2,7 @@ import * as pdf from 'pdf-parse'
 import { getDbClient } from '../db'
 import { QdrantClientWrapper } from '../qdrant'
 import { PromptRegistry } from '../prompt-registry'
+import { getEmbedding } from '../embeddings'
 
 export interface RawTransaction {
   date: string | null
@@ -229,26 +230,25 @@ export async function runIngestAgent(
   const qdrant = new QdrantClientWrapper()
   await qdrant.initCollection('financial_documents')
   
-  const vectorPoints = chunks.map((chunkText, index) => {
-    // Generate a simple deterministic dummy vector (3072 dims) based on terms, or full array of zeros
-    // (the wrapper handles cosine search using query text match if using local fallback)
-    const dummyVector = new Array(3072).fill(0).map((_, i) => Math.sin(index + i))
-    
-    return {
-      id: `${documentId}-${index}`,
-      vector: dummyVector,
-      payload: {
-        user_id: userId,
-        document_id: documentId,
-        document_type,
-        upload_date: new Date().toISOString().split('T')[0],
-        embedding_version: 'text-embedding-3-large-v1',
-        chunk_index: index,
-        total_chunks: chunks.length,
-        text: chunkText,
-      },
-    }
-  })
+  const vectorPoints = await Promise.all(
+    chunks.map(async (chunkText, index) => {
+      const vector = await getEmbedding(chunkText)
+      return {
+        id: `${documentId}-${index}`,
+        vector,
+        payload: {
+          user_id: userId,
+          document_id: documentId,
+          document_type,
+          upload_date: new Date().toISOString().split('T')[0],
+          embedding_version: 'text-embedding-3-large-v1',
+          chunk_index: index,
+          total_chunks: chunks.length,
+          text: chunkText,
+        },
+      }
+    })
+  )
 
   await qdrant.upsertPoints('financial_documents', vectorPoints)
 

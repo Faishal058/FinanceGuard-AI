@@ -4,6 +4,7 @@ import { ForecastResult } from './forecast'
 import { QdrantClientWrapper } from '../qdrant'
 import { EnkryptClient } from '../enkrypt'
 import { PromptRegistry } from '../prompt-registry'
+import { getEmbedding } from '../embeddings'
 
 export interface KeyFinding {
   finding: string
@@ -216,10 +217,13 @@ ${memoryString}
   let memory_stored = false
   try {
     const memoryId = 'mem_' + Math.random().toString(36).substr(2, 9)
+    const memoryText = `Query: ${query}. Summary: ${executive_summary}`
+    const memoryVector = await getEmbedding(memoryText)
+    
     await qdrant.upsertPoints('user_memory', [
       {
         id: memoryId,
-        vector: new Array(3072).fill(0).map((_, i) => Math.cos(i)),
+        vector: memoryVector,
         payload: {
           user_id: userId,
           query,
@@ -230,7 +234,7 @@ ${memoryString}
           embedding_version: 'text-embedding-3-large-v1',
           chunk_index: 0,
           total_chunks: 1,
-          text: `Query: ${query}. Summary: ${executive_summary}`,
+          text: memoryText,
           document_id: sessionId,
         },
       },
