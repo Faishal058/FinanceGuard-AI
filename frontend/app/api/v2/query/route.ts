@@ -9,6 +9,7 @@ import { runForecastAgent } from '@/lib/backend/agents/forecast'
 import { runAdvisorAgent } from '@/lib/backend/agents/advisor'
 import { Workflow } from '@/lib/backend/workflow'
 import { QualityGateService } from '@/lib/backend/quality-gates'
+import { getRedisClient, getRedisSubClient, publishWorkflowTask } from '@/lib/backend/redis'
 
 export async function POST(req: NextRequest) {
   try {
@@ -158,89 +159,159 @@ export async function POST(req: NextRequest) {
     })
 
     const startTime = Date.now()
-    // Trigger workflow execution
-    const workflowContext = await workflow.execute(sessionId, user.userId, { query: sanitizedQuery })
-    const latencyMs = Date.now() - startTime
+    let latencyMs = 0
+    let finalResponse: any = null
+    let usedRedis = false
 
-    // If paused at human approval gate
-    if (workflowContext.status === 'PENDING_APPROVAL') {
-      return NextResponse.json({
-        status: 'pending_approval',
-        session_id: sessionId,
-        message: 'Critical risk flags detected. Escalated to compliance officer review.',
-        code: 'HUMAN_APPROVAL_REQUIRED',
+    try {
+      const redis = getRedisClient()
+      const pubsub = getRedisSubClient()
+      const taskId = 'task_' + Math.random().toString(36).substr(2, 9)
+
+      // Check if Redis connection is working
+      await redis.ping()
+      usedRedis = true
+
+      const completionPromise = new Promise<any>((resolve, reject) => {
+        const channel = `workflow_complete:${taskId}`
+        
+        const onMessage = async (chan: string, msg: string) => {
+          if (chan === channel) {
+            try {
+              const resString = await redis.get(`workflow_result:${taskId}`)
+              if (resString) {
+                const parsed = JSON.parse(resString)
+                resolve(parsed)
+              } else {
+                reject(new Error('Result not found in Redis'))
+              }
+            } catch (e) {
+              reject(e)
+            } finally {
+              pubsub.unsubscribe(channel).catch(console.error)
+              pubsub.off('message', onMessage)
+            }
+          }
+        }
+
+        pubsub.subscribe(channel).then(() => {
+          pubsub.on('message', onMessage)
+          
+          publishWorkflowTask(taskId, {
+            userId: user.userId,
+            sessionId,
+            query: sanitizedQuery,
+            traceId,
+          }).catch(reject)
+        }).catch(reject)
       })
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Redis workflow worker timeout')), 6000)
+      )
+
+      finalResponse = await Promise.race([completionPromise, timeoutPromise])
+      latencyMs = Date.now() - startTime
+      
+      await redis.del(`workflow_result:${taskId}`)
+    } catch (redisErr) {
+      console.warn('Redis Streams workflow execution failed or timed out. Falling back to inline execution.', redisErr)
+      usedRedis = false
     }
 
-    // Evaluate Quality Gates on Advisor Output
-    const tokenCount = 1450
-    const confidenceScore = advisorResult.confidence_score || 0.90
-    
-    const isSafetyBlocked = advisorResult.advisory.executive_summary.includes('[SECURITY BLOCK]')
-    const isJsonValid = !isSafetyBlocked
-    
-    const safetyObj = {
-      allowed: !isSafetyBlocked,
-      hallucinationScore: advisorResult.safety_scores?.hallucination || 0.01,
-      complianceScore: advisorResult.safety_scores?.compliance || 1.0,
-      biasScore: advisorResult.safety_scores?.bias || 0.01,
-      piiScore: isSafetyBlocked ? 0.95 : 0.0,
-    }
+    if (!usedRedis) {
+      // Trigger workflow execution inline
+      const workflowContext = await workflow.execute(sessionId, user.userId, { query: sanitizedQuery })
+      latencyMs = Date.now() - startTime
 
-    const gateResult = QualityGateService.evaluate(
-      'Advisor Agent',
-      traceId,
-      '4.2.1',
-      safetyObj,
-      latencyMs,
-      tokenCount,
-      confidenceScore,
-      isJsonValid
-    )
+      // If paused at human approval gate
+      if (workflowContext.status === 'PENDING_APPROVAL') {
+        return NextResponse.json({
+          status: 'pending_approval',
+          session_id: sessionId,
+          message: 'Critical risk flags detected. Escalated to compliance officer review.',
+          code: 'HUMAN_APPROVAL_REQUIRED',
+        })
+      }
 
-    if (gateResult.overallAction === 'BLOCK') {
-      return NextResponse.json({
-        error: 'Output blocked by safety filters',
-        code: 'SAFETY_BLOCKED',
-        evaluations: gateResult.evaluations,
-      }, { status: 403 })
-    }
+      // Evaluate Quality Gates on Advisor Output
+      const tokenCount = 1450
+      const confidenceScore = advisorResult.confidence_score || 0.90
+      
+      const isSafetyBlocked = advisorResult.advisory.executive_summary.includes('[SECURITY BLOCK]')
+      const isJsonValid = !isSafetyBlocked
+      
+      const safetyObj = {
+        allowed: !isSafetyBlocked,
+        hallucinationScore: advisorResult.safety_scores?.hallucination || 0.01,
+        complianceScore: advisorResult.safety_scores?.compliance || 1.0,
+        biasScore: advisorResult.safety_scores?.bias || 0.01,
+        piiScore: isSafetyBlocked ? 0.95 : 0.0,
+      }
 
-    if (gateResult.overallAction === 'ESCALATE') {
-      return NextResponse.json({
-        status: 'pending_approval',
-        session_id: sessionId,
-        message: 'Compliance verification failure. Escalated to compliance officer review.',
-        code: 'HUMAN_APPROVAL_REQUIRED',
-        evaluations: gateResult.evaluations,
-      })
-    }
+      const gateResult = QualityGateService.evaluate(
+        'Advisor Agent',
+        traceId,
+        '4.2.1',
+        safetyObj,
+        latencyMs,
+        tokenCount,
+        confidenceScore,
+        isJsonValid
+      )
 
-    return NextResponse.json({
-      request_id: 'req_' + Math.random().toString(36).substr(2, 9),
-      trace_id: traceId,
-      status: 'success',
-      data: {
-        advisory: advisorResult.advisory,
-        confidence_score: advisorResult.confidence_score,
-        safety_scores: advisorResult.safety_scores,
-        prompt_versions: {
-          ingest: '2.3.1',
-          profile: '1.8.0',
-          risk: '3.1.0',
-          forecast: '2.0.0',
-          advisor: '4.2.1',
+      if (gateResult.overallAction === 'BLOCK') {
+        return NextResponse.json({
+          error: 'Output blocked by safety filters',
+          code: 'SAFETY_BLOCKED',
+          evaluations: gateResult.evaluations,
+        }, { status: 403 })
+      }
+
+      if (gateResult.overallAction === 'ESCALATE') {
+        return NextResponse.json({
+          status: 'pending_approval',
+          session_id: sessionId,
+          message: 'Compliance verification failure. Escalated to compliance officer review.',
+          code: 'HUMAN_APPROVAL_REQUIRED',
+          evaluations: gateResult.evaluations,
+        })
+      }
+
+      finalResponse = {
+        request_id: 'req_' + Math.random().toString(36).substr(2, 9),
+        trace_id: traceId,
+        status: 'success',
+        data: {
+          advisory: advisorResult.advisory,
+          confidence_score: advisorResult.confidence_score,
+          safety_scores: advisorResult.safety_scores,
+          prompt_versions: {
+            ingest: '2.3.1',
+            profile: '1.8.0',
+            risk: '3.1.0',
+            forecast: '2.0.0',
+            advisor: '4.2.1',
+          },
+          model_version: 'gpt-4o',
         },
-        model_version: 'gpt-4o',
-      },
-      metadata: {
-        latency_ms: latencyMs,
-        token_count: tokenCount,
-        cost_usd: 0.021,
-        agents_executed: ['profile', 'risk', 'forecast', 'advisor'],
-        quality_gates_checked: gateResult.evaluations.length,
-      },
-    })
+        metadata: {
+          latency_ms: latencyMs,
+          token_count: tokenCount,
+          cost_usd: 0.021,
+          agents_executed: ['profile', 'risk', 'forecast', 'advisor'],
+          quality_gates_checked: gateResult.evaluations.length,
+        },
+      }
+    }
+
+    if (finalResponse.error) {
+      const code = finalResponse.code || 'AGENT_FAILURE'
+      const status = code === 'SAFETY_BLOCKED' ? 403 : 500
+      return NextResponse.json(finalResponse, { status })
+    }
+    
+    return NextResponse.json(finalResponse)
   } catch (e: any) {
     console.error('Query workflow execution error', e)
     return NextResponse.json({
