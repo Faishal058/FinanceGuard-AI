@@ -3,6 +3,7 @@ import { RiskReportResult } from './risk'
 import { ForecastResult } from './forecast'
 import { QdrantClientWrapper } from '../qdrant'
 import { EnkryptClient } from '../enkrypt'
+import { PromptRegistry } from '../prompt-registry'
 
 export interface KeyFinding {
   finding: string
@@ -81,6 +82,7 @@ export async function runAdvisorAgent(
   // 2. Synthesize using OpenAI or local rule-engine
   if (process.env.OPENAI_API_KEY) {
     try {
+      const promptObj = await PromptRegistry.fetchPrompt('advisor')
       const memoryString = memories.map(m => `Query: "${m.payload.query}" -> Advisory Summary: "${m.payload.summary}"`).join('\n')
       
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -90,20 +92,14 @@ export async function runAdvisorAgent(
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: promptObj.model_id,
+          temperature: promptObj.temperature,
+          top_p: promptObj.top_p,
+          max_tokens: promptObj.max_tokens,
           messages: [
             {
               role: 'system',
-              content: `SYSTEM PROMPT — ADVISOR AGENT v4.2.1
-You are a Senior Financial Strategist operating within the FinanceGuard AI platform. Synthesize the user's Profile, Risk Report, and Forecast results to generate a personalized markdown advisory.
-STRICT GUARDRAIL: You are strictly forbidden from recommending specific stock tickers (e.g. AAPL, TSLA), mutual funds, or products. Focus exclusively on structural, objective guidance.
-Respond in valid JSON matching this schema:
-{
-  "executive_summary": "string",
-  "key_findings": [{ "finding": "string", "source_agent": "string", "severity": "INFO"|"WARNING"|"CRITICAL" }],
-  "action_items": [{ "priority": number, "action": "string", "rationale": "string", "source_citation": "string", "category": "DEBT"|"SAVINGS"|"INCOME"|"EXPENSES"|"RISK_MITIGATION"|"GENERAL", "timeline": "string" }],
-  "risk_acknowledgments": ["string"]
-}`,
+              content: promptObj.prompt_text,
             },
             {
               role: 'user',

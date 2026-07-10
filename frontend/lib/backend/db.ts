@@ -1,4 +1,5 @@
 import { createClient, Client } from '@libsql/client'
+import { PromptRegistry } from './prompt-registry'
 
 // Absolute path to the SQLite file in the workspace root
 const dbPath = 'd:/FinanceGuard/financeguard.db'
@@ -185,4 +186,7 @@ export async function initDb() {
       FOREIGN KEY(user_id) REFERENCES user_profiles(user_id)
     );
   `)
+
+  // Seed default prompts if empty
+  await PromptRegistry.initializeAndSeed()
 }

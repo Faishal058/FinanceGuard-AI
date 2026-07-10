@@ -1,6 +1,7 @@
 import * as pdf from 'pdf-parse'
 import { getDbClient } from '../db'
 import { QdrantClientWrapper } from '../qdrant'
+import { PromptRegistry } from '../prompt-registry'
 
 export interface RawTransaction {
   date: string | null
@@ -160,6 +161,7 @@ export async function runIngestAgent(
   // Check if OpenAI API key is present for smart parsing
   if (process.env.OPENAI_API_KEY) {
     try {
+      const promptObj = await PromptRegistry.fetchPrompt('ingest')
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -167,19 +169,14 @@ export async function runIngestAgent(
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: promptObj.model_id,
+          temperature: promptObj.temperature,
+          top_p: promptObj.top_p,
+          max_tokens: promptObj.max_tokens,
           messages: [
             {
               role: 'system',
-              content: `SYSTEM PROMPT — INGEST AGENT v2.3.1
-You are a Data Extraction Specialist with expertise in financial document parsing, OCR interpretation, and structured data normalization.
-Convert unstructured financial documents (PDF bank statements, CSV transaction exports, loan documents) into clean, validated JSON structures conforming to this schema:
-{
-  "transactions": [
-    { "date": "YYYY-MM-DD", "amount": number, "category": "INCOME"|"HOUSING"|"UTILITIES"|"FOOD"|"TRANSPORT"|"HEALTHCARE"|"ENTERTAINMENT"|"DEBT_PAYMENT"|"SAVINGS"|"TRANSFER"|"OTHER", "merchant": string|null, "description": string|null, "flagged": boolean, "flag_reason": string|null }
-  ]
-}
-Return ONLY valid JSON. No markdown backticks.`,
+              content: promptObj.prompt_text,
             },
             {
               role: 'user',

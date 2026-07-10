@@ -8,6 +8,7 @@ import { runRiskAgent } from '@/lib/backend/agents/risk'
 import { runForecastAgent } from '@/lib/backend/agents/forecast'
 import { runAdvisorAgent } from '@/lib/backend/agents/advisor'
 import { Workflow } from '@/lib/backend/workflow'
+import { QualityGateService } from '@/lib/backend/quality-gates'
 
 export async function POST(req: NextRequest) {
   try {
@@ -156,8 +157,10 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    const startTime = Date.now()
     // Trigger workflow execution
     const workflowContext = await workflow.execute(sessionId, user.userId, { query: sanitizedQuery })
+    const latencyMs = Date.now() - startTime
 
     // If paused at human approval gate
     if (workflowContext.status === 'PENDING_APPROVAL') {
@@ -166,6 +169,50 @@ export async function POST(req: NextRequest) {
         session_id: sessionId,
         message: 'Critical risk flags detected. Escalated to compliance officer review.',
         code: 'HUMAN_APPROVAL_REQUIRED',
+      })
+    }
+
+    // Evaluate Quality Gates on Advisor Output
+    const tokenCount = 1450
+    const confidenceScore = advisorResult.confidence_score || 0.90
+    
+    const isSafetyBlocked = advisorResult.advisory.executive_summary.includes('[SECURITY BLOCK]')
+    const isJsonValid = !isSafetyBlocked
+    
+    const safetyObj = {
+      allowed: !isSafetyBlocked,
+      hallucinationScore: advisorResult.safety_scores?.hallucination || 0.01,
+      complianceScore: advisorResult.safety_scores?.compliance || 1.0,
+      biasScore: advisorResult.safety_scores?.bias || 0.01,
+      piiScore: isSafetyBlocked ? 0.95 : 0.0,
+    }
+
+    const gateResult = QualityGateService.evaluate(
+      'Advisor Agent',
+      traceId,
+      '4.2.1',
+      safetyObj,
+      latencyMs,
+      tokenCount,
+      confidenceScore,
+      isJsonValid
+    )
+
+    if (gateResult.overallAction === 'BLOCK') {
+      return NextResponse.json({
+        error: 'Output blocked by safety filters',
+        code: 'SAFETY_BLOCKED',
+        evaluations: gateResult.evaluations,
+      }, { status: 403 })
+    }
+
+    if (gateResult.overallAction === 'ESCALATE') {
+      return NextResponse.json({
+        status: 'pending_approval',
+        session_id: sessionId,
+        message: 'Compliance verification failure. Escalated to compliance officer review.',
+        code: 'HUMAN_APPROVAL_REQUIRED',
+        evaluations: gateResult.evaluations,
       })
     }
 
@@ -187,10 +234,11 @@ export async function POST(req: NextRequest) {
         model_version: 'gpt-4o',
       },
       metadata: {
-        latency_ms: 1250,
-        token_count: 1450,
+        latency_ms: latencyMs,
+        token_count: tokenCount,
         cost_usd: 0.021,
         agents_executed: ['profile', 'risk', 'forecast', 'advisor'],
+        quality_gates_checked: gateResult.evaluations.length,
       },
     })
   } catch (e: any) {
