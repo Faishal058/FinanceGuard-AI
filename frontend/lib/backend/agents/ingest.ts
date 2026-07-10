@@ -3,6 +3,7 @@ import { getDbClient } from '../db'
 import { QdrantClientWrapper } from '../qdrant'
 import { PromptRegistry } from '../prompt-registry'
 import { getEmbedding } from '../embeddings'
+import { mastra } from '../mastra-init'
 
 export interface RawTransaction {
   date: string | null
@@ -162,6 +163,7 @@ export async function runIngestAgent(
   // Check if OpenAI API key is present for smart parsing
   if (process.env.OPENAI_API_KEY) {
     try {
+      const mastraAgent = mastra.getAgent('ingest')
       const promptObj = await PromptRegistry.fetchPrompt('ingest')
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',

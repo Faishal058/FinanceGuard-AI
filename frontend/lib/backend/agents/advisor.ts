@@ -5,6 +5,7 @@ import { QdrantClientWrapper } from '../qdrant'
 import { EnkryptClient } from '../enkrypt'
 import { PromptRegistry } from '../prompt-registry'
 import { getEmbedding } from '../embeddings'
+import { mastra } from '../mastra-init'
 
 export interface KeyFinding {
   finding: string
@@ -83,6 +84,7 @@ export async function runAdvisorAgent(
   // 2. Synthesize using OpenAI or local rule-engine
   if (process.env.OPENAI_API_KEY) {
     try {
+      const mastraAgent = mastra.getAgent('advisor')
       const promptObj = await PromptRegistry.fetchPrompt('advisor')
       const memoryString = memories.map(m => `Query: "${m.payload.query}" -> Advisory Summary: "${m.payload.summary}"`).join('\n')
       
