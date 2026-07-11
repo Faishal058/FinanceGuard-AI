@@ -1,7 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
 import type { Metadata, Viewport } from 'next'
-import { ThemeProvider } from 'next-themes'
+import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
 export const metadata: Metadata = {

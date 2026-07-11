@@ -112,7 +112,7 @@ export default function AgentsPage() {
 
                 {/* Footer */}
                 <div className="flex items-center justify-between pt-3 border-t border-border mt-1">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1" suppressHydrationWarning>
                     <Clock className="h-3 w-3" />
                     {formatRelativeTime(agent.lastActivity)}
                   </p>

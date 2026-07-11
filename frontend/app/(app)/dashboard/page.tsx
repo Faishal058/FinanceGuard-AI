@@ -300,7 +300,7 @@ export default function DashboardPage() {
                     </div>
                     <ConfidenceBar value={agent.confidenceScore} size="sm" className="mt-2" />
                   </div>
-                  <p className="text-xs text-muted-foreground shrink-0">
+                  <p className="text-xs text-muted-foreground shrink-0" suppressHydrationWarning>
                     {formatRelativeTime(agent.lastActivity)}
                   </p>
                 </motion.div>
@@ -340,7 +340,7 @@ export default function DashboardPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground leading-tight">{item.title}</p>
                     <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>
-                    <p className="text-xs text-tertiary mt-1">{formatRelativeTime(item.timestamp)}</p>
+                    <p className="text-xs text-tertiary mt-1" suppressHydrationWarning>{formatRelativeTime(item.timestamp)}</p>
                   </div>
                 </div>
               ))}
