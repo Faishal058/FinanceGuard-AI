@@ -49,14 +49,25 @@ export default function DashboardPage() {
   const [user, setUser] = useState<{ name: string; email: string } | null>(null)
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('fg_user')
-      if (stored) {
-        setUser(JSON.parse(stored))
+    async function fetchProfile() {
+      try {
+        const token = localStorage.getItem('fg_token')
+        if (!token) return
+
+        const response = await fetch('/api/v2/user/data', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        if (response.ok) {
+          const profile = await response.json()
+          setUser(profile)
+        }
+      } catch (e) {
+        console.error(e)
       }
-    } catch (e) {
-      console.error(e)
     }
+    fetchProfile()
   }, [])
 
   useEffect(() => {
