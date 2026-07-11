@@ -90,8 +90,18 @@ export async function runAdvisorAgent(
       
       const apiKey = process.env.OPENAI_API_KEY || ''
       const isOpenRouter = apiKey.startsWith('sk-or-')
-      const apiUrl = isOpenRouter ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions'
-      const modelId = isOpenRouter ? 'google/gemini-2.5-flash:free' : promptObj.model_id
+      const isFeatherless = apiKey.startsWith('fl-')
+      
+      let apiUrl = 'https://api.openai.com/v1/chat/completions'
+      let modelId = promptObj.model_id
+
+      if (isOpenRouter) {
+        apiUrl = 'https://openrouter.ai/api/v1/chat/completions'
+        modelId = 'google/gemini-2.5-flash:free'
+      } else if (isFeatherless) {
+        apiUrl = 'https://api.featherless.ai/v1/chat/completions'
+        modelId = 'Qwen/Qwen2.5-7B-Instruct'
+      }
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
