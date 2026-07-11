@@ -290,16 +290,18 @@ function LoginForm() {
           </motion.div>
 
           {/* OAuth */}
-          <motion.div variants={itemVariants} className="grid grid-cols-2 gap-3">
-            {[
-              { label: 'Google', logo: 'G' },
-              { label: 'Microsoft', logo: 'M' },
-            ].map(provider => (
-              <Button key={provider.label} variant="outline" size="md" onClick={() => handleSocialLogin(provider.label)} disabled={loading}>
-                <span className="font-bold mr-1.5">{provider.logo}</span>
-                {provider.label}
-              </Button>
-            ))}
+          <motion.div variants={itemVariants}>
+            <Button
+              variant="outline"
+              size="lg"
+              fullWidth
+              onClick={() => handleSocialLogin('Google')}
+              disabled={loading}
+              className="flex items-center justify-center gap-2"
+            >
+              <span className="font-bold text-lg">G</span>
+              Continue with Google
+            </Button>
           </motion.div>
 
           {/* Toggle link */}
