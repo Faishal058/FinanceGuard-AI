@@ -206,9 +206,21 @@ function parseTextToTransactions(text: string): RawTransaction[] {
 }
 
 export async function parsePdfDocument(buffer: Buffer): Promise<string> {
-  const parsePdf = (pdf as any).default || pdf
-  const data = await parsePdf(buffer)
-  return data.text
+  try {
+    const parsePdf = (pdf as any).default || pdf
+    const data = await parsePdf(buffer)
+    return data.text
+  } catch (err) {
+    console.error('pdf-parse failed, attempting simple string extraction fallback:', err)
+    const text = buffer.toString('utf-8')
+    const cleanText = text.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F\u007F-\u009F]/g, ' ')
+    // Extract sequences of printable characters
+    const matches = cleanText.match(/[\x20-\x7E]{4,120}/g)
+    if (matches && matches.length > 0) {
+      return matches.join('\n')
+    }
+    throw new Error(`Failed to parse PDF document: ${err instanceof Error ? err.message : String(err)}`)
+  }
 }
 
 export async function runIngestAgent(
