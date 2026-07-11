@@ -58,6 +58,17 @@ export default function RiskAnalysisPage() {
     }
   }
 
+  const handleExport = () => {
+    if (!riskData) return
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(riskData, null, 2))
+    const downloadAnchor = document.createElement('a')
+    downloadAnchor.setAttribute("href", dataStr)
+    downloadAnchor.setAttribute("download", `financeguard_risk_${new Date().toISOString().split('T')[0]}.json`)
+    document.body.appendChild(downloadAnchor)
+    downloadAnchor.click()
+    downloadAnchor.remove()
+  }
+
   useEffect(() => {
     fetchRiskData()
   }, [])
@@ -180,9 +191,9 @@ export default function RiskAnalysisPage() {
             <Button variant="outline" size="sm" onClick={fetchRiskData} leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
               Refresh
             </Button>
-            <Button variant="gradient" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} glow>
-              Export
-            </Button>
+             <Button variant="gradient" size="sm" onClick={handleExport} leftIcon={<Download className="h-3.5 w-3.5" />} glow>
+               Export
+             </Button>
           </div>
         }
       />

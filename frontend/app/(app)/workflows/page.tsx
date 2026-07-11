@@ -8,7 +8,7 @@ import { GlassCard } from '@/components/common/glass-card'
 import { PageHeader } from '@/components/common/page-header'
 import { Button } from '@/components/ui/button'
 import { pageVariants, containerVariants, itemVariants } from '@/lib/animations'
-import { Workflow, CheckCircle2, XCircle, Clock, RotateCcw } from 'lucide-react'
+import { Workflow, CheckCircle2, XCircle, Clock, RotateCcw, RefreshCw } from 'lucide-react'
 
 const stepStatusIcon = (status: string) => {
   if (status === 'completed') return <CheckCircle2 className="h-4 w-4 text-success" />
@@ -27,16 +27,22 @@ const statusColor = (status: string) => {
 export default function WorkflowsPage() {
   const [loading, setLoading] = useState(true)
   const [hasDocs, setHasDocs] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [workflows, setWorkflows] = useState<any[]>([])
   const [stats, setStats] = useState({ total: 0, completed: 0, running: 0, failed: 0 })
 
-  async function loadData() {
+  async function loadData(isSilent = false) {
     try {
+      if (!isSilent) setRefreshing(true)
       const [dashRes, wfRes] = await Promise.all([
         ApiClient.get('/api/v2/dashboard'),
         ApiClient.get('/api/v2/workflows').catch(() => null),
       ])
-      if (dashRes?.metrics?.documentCount > 0) setHasDocs(true)
+      if (dashRes?.metrics?.documentCount > 0) {
+        setHasDocs(true)
+      } else {
+        setHasDocs(false)
+      }
       if (wfRes?.workflows) {
         setWorkflows(wfRes.workflows)
         setStats(wfRes.stats)
@@ -45,6 +51,7 @@ export default function WorkflowsPage() {
       console.error(e)
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
@@ -88,8 +95,14 @@ export default function WorkflowsPage() {
           title="Workflows"
           description="Multi-step AI orchestration pipelines powered by Mastra with full OpenTelemetry tracing"
           actions={
-            <Button variant="outline" size="sm" leftIcon={<RotateCcw className="h-3.5 w-3.5" />} onClick={loadData}>
-              Refresh
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={refreshing}
+              leftIcon={<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />}
+              onClick={() => loadData(false)}
+            >
+              {refreshing ? 'Refreshing...' : 'Refresh'}
             </Button>
           }
         />
@@ -112,8 +125,14 @@ export default function WorkflowsPage() {
         title="Workflows"
         description="Multi-step AI orchestration pipelines powered by Mastra with full OpenTelemetry tracing"
         actions={
-          <Button variant="outline" size="sm" leftIcon={<RotateCcw className="h-3.5 w-3.5" />} onClick={loadData}>
-            Refresh
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={refreshing}
+            leftIcon={<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />}
+            onClick={() => loadData(false)}
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
         }
       />

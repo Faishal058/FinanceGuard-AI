@@ -43,6 +43,17 @@ export default function SafetyPage() {
     }
   }
 
+  const handleExport = () => {
+    if (!safetyData?.auditLog) return
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(safetyData.auditLog, null, 2))
+    const downloadAnchor = document.createElement('a')
+    downloadAnchor.setAttribute("href", downloadAnchor.href || dataStr)
+    downloadAnchor.setAttribute("download", `financeguard_safety_audit_${new Date().toISOString().split('T')[0]}.json`)
+    document.body.appendChild(downloadAnchor)
+    downloadAnchor.click()
+    downloadAnchor.remove()
+  }
+
   useEffect(() => {
     fetchSafety()
   }, [])
@@ -181,7 +192,7 @@ export default function SafetyPage() {
         <GlassCard>
           <div className="flex items-center justify-between mb-5">
             <SectionHeader title="Audit Log" description="Recent safety events" />
-            <Button variant="ghost" size="xs" leftIcon={<FileCheck className="h-3 w-3" />}>
+            <Button variant="ghost" size="xs" onClick={handleExport} leftIcon={<FileCheck className="h-3 w-3" />}>
               Export Log
             </Button>
           </div>

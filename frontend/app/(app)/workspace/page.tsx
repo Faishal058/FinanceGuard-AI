@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { ApiClient } from '@/lib/api-client'
 import {
   Send, Paperclip, Settings, Sparkles, Brain, FileText,
-  Maximize2, RefreshCw, Copy, ThumbsUp, ThumbsDown, ChevronDown,
+  Maximize2, Minimize2, RefreshCw, Copy, ThumbsUp, ThumbsDown, ChevronDown,
 } from 'lucide-react'
 
 interface Message {
@@ -150,6 +150,7 @@ export default function WorkspacePage() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [activeStep, setActiveStep] = useState(-1)
+  const [isExpanded, setIsExpanded] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const sessionIdRef = useRef<string>('')
 
@@ -299,11 +300,24 @@ export default function WorkspacePage() {
         className="mb-5 shrink-0"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setMessages([INITIAL_MESSAGE])
+                sessionIdRef.current = 'sess_' + Math.random().toString(36).substr(2, 9)
+              }}
+              leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
+            >
               New Chat
             </Button>
-            <Button variant="outline" size="sm" leftIcon={<Maximize2 className="h-3.5 w-3.5" />}>
-              Expand
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsExpanded(p => !p)}
+              leftIcon={isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            >
+              {isExpanded ? 'Collapse' : 'Expand'}
             </Button>
           </div>
         }
@@ -403,7 +417,10 @@ export default function WorkspacePage() {
         </div>
 
         {/* ── Right Panel ── */}
-        <div className="hidden xl:flex flex-col gap-4 w-72 shrink-0">
+        <div className={cn(
+          "hidden xl:flex flex-col gap-4 w-72 shrink-0 transition-all duration-300",
+          isExpanded && "xl:hidden"
+        )}>
           {/* Workflow Status */}
           <GlassCard padding="md">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">

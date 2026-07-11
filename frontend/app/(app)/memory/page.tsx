@@ -5,21 +5,12 @@ import { motion } from 'framer-motion'
 import { ApiClient } from '@/lib/api-client'
 import { EmptyState } from '@/components/common/empty-state'
 import { GlassCard } from '@/components/common/glass-card'
-import { PageHeader, SectionHeader, ConfidenceBar } from '@/components/common/page-header'
+import { PageHeader, ConfidenceBar } from '@/components/common/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { pageVariants, containerVariants, itemVariants } from '@/lib/animations'
 import { Brain, Search, Lightbulb, TrendingUp, Hash, Calendar, RefreshCw } from 'lucide-react'
-
-const memories = [
-  { id: 1, type: 'fact', content: 'Monthly income consistently averages $8,500 over the past 6 months', confidence: 0.96, createdAt: '2024-12-20', related: ['Bank_Statements_Q4.pdf'] },
-  { id: 2, type: 'insight', content: 'Portfolio shows high concentration in technology sector (38%), exceeding target by 8%', confidence: 0.91, createdAt: '2024-12-18', related: ['Investment_Portfolio.xlsx'] },
-  { id: 3, type: 'pattern', content: 'Spending peaks in Q4, averaging 22% higher than Q1-Q3 months', confidence: 0.87, createdAt: '2024-12-15', related: ['Bank_Statements_Q4.pdf', '2024_Tax_Return.pdf'] },
-  { id: 4, type: 'recommendation', content: 'Based on debt-to-income ratio of 20.8%, borrower qualifies for favorable mortgage refinancing rates', confidence: 0.83, createdAt: '2024-12-10', related: ['Mortgage_Agreement.pdf'] },
-  { id: 5, type: 'fact', content: 'Net worth grew 7.8% over the past 6 months, from $450K to $485K', confidence: 0.99, createdAt: '2024-12-01', related: ['2024_Tax_Return.pdf'] },
-  { id: 6, type: 'pattern', content: 'Investment returns show a seasonal pattern with stronger performance in Q2', confidence: 0.79, createdAt: '2024-11-28', related: ['Investment_Portfolio.xlsx'] },
-]
 
 const typeConfig = {
   fact: { icon: Hash, badge: 'primary' as const, label: 'Fact' },
@@ -31,22 +22,27 @@ const typeConfig = {
 export default function MemoryPage() {
   const [loading, setLoading] = useState(true)
   const [hasDocs, setHasDocs] = useState(false)
+  const [memories, setMemories] = useState<any[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
 
-  useEffect(() => {
-    async function checkDocs() {
-      try {
-        const res = await ApiClient.get('/api/v2/dashboard')
-        if (res && res.metrics && res.metrics.documentCount > 0) {
-          setHasDocs(true)
-        }
-      } catch (e) {
-        console.error(e)
-      } finally {
-        setLoading(false)
+  async function loadData() {
+    try {
+      const [dashRes, memRes] = await Promise.all([
+        ApiClient.get('/api/v2/dashboard'),
+        ApiClient.get('/api/v2/memory').catch(() => null),
+      ])
+      if (dashRes?.metrics?.documentCount > 0) setHasDocs(true)
+      if (memRes?.memories) {
+        setMemories(memRes.memories)
       }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
     }
-    checkDocs()
-  }, [])
+  }
+
+  useEffect(() => { loadData() }, [])
 
   if (loading) {
     return (
@@ -60,9 +56,7 @@ export default function MemoryPage() {
     return (
       <motion.div
         className="space-y-8 p-6 md:p-8 max-w-[1400px] mx-auto"
-        variants={pageVariants}
-        initial="hidden"
-        animate="visible"
+        variants={pageVariants} initial="hidden" animate="visible"
       >
         <PageHeader
           title="Memory Explorer"
@@ -72,28 +66,26 @@ export default function MemoryPage() {
           preset="search"
           title="No RAG Memories Stored"
           description="Upload a bank statement in the Documents page or chat with the AI Agent in the Workspace to record long-term memories."
-          action={{
-            label: "Go to Workspace",
-            onClick: () => window.location.href = "/workspace",
-            variant: "gradient"
-          }}
+          action={{ label: "Go to Workspace", onClick: () => window.location.href = "/workspace", variant: "gradient" }}
         />
       </motion.div>
     )
   }
 
+  const filteredMemories = memories.filter(mem =>
+    mem.content.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
   return (
     <motion.div
       className="space-y-8 p-6 md:p-8 max-w-[1400px] mx-auto"
-      variants={pageVariants}
-      initial="hidden"
-      animate="visible"
+      variants={pageVariants} initial="hidden" animate="visible"
     >
       <PageHeader
         title="Memory Explorer"
         description="Browse AI-extracted insights and facts retrieved from your financial documents via Qdrant RAG"
         actions={
-          <Button variant="outline" size="sm" leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
+          <Button variant="outline" size="sm" onClick={loadData} leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
             Sync Memory
           </Button>
         }
@@ -127,46 +119,54 @@ export default function MemoryPage() {
           leftIcon={<Search className="h-4 w-4" />}
           placeholder="Search memories by content or keyword..."
           variant="glass"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
         />
       </motion.div>
 
       {/* Memory Cards */}
-      <motion.div className="space-y-4" variants={containerVariants}>
-        {memories.map(mem => {
-          const cfg = typeConfig[mem.type as keyof typeof typeConfig]
-          const Icon = cfg.icon
+      {filteredMemories.length === 0 ? (
+        <div className="text-center py-12 text-sm text-muted-foreground">
+          No matching memories found.
+        </div>
+      ) : (
+        <motion.div className="space-y-4" variants={containerVariants}>
+          {filteredMemories.map(mem => {
+            const cfg = typeConfig[mem.type as keyof typeof typeConfig] || typeConfig.fact
+            const Icon = cfg.icon
 
-          return (
-            <motion.div key={mem.id} variants={itemVariants}>
-              <GlassCard hover>
-                <div className="flex items-start gap-4">
-                  <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                    <Icon className="h-5 w-5 text-primary" strokeWidth={1.7} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <Badge variant={cfg.badge} size="sm" dot>{cfg.label}</Badge>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Calendar className="h-3 w-3" /> {mem.createdAt}
-                      </span>
+            return (
+              <motion.div key={mem.id} variants={itemVariants}>
+                <GlassCard hover>
+                  <div className="flex items-start gap-4">
+                    <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                      <Icon className="h-5 w-5 text-primary" strokeWidth={1.7} />
                     </div>
-                    <p className="text-sm text-foreground leading-relaxed mb-3">{mem.content}</p>
-                    <ConfidenceBar value={mem.confidence} size="sm" label="Confidence" />
-                    {mem.related.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-3">
-                        <span className="text-xs text-muted-foreground">Sources:</span>
-                        {mem.related.map(src => (
-                          <Badge key={src} variant="outline" size="sm">{src}</Badge>
-                        ))}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <Badge variant={cfg.badge} size="sm" dot>{cfg.label}</Badge>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Calendar className="h-3 w-3" /> {mem.createdAt}
+                        </span>
                       </div>
-                    )}
+                      <p className="text-sm text-foreground leading-relaxed mb-3">{mem.content}</p>
+                      <ConfidenceBar value={mem.confidence} size="sm" label="Confidence" />
+                      {mem.related && mem.related.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-3">
+                          <span className="text-xs text-muted-foreground">Sources:</span>
+                          {mem.related.map((src: string) => (
+                            <Badge key={src} variant="outline" size="sm">{src}</Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </GlassCard>
-            </motion.div>
-          )
-        })}
-      </motion.div>
+                </GlassCard>
+              </motion.div>
+            )
+          })}
+        </motion.div>
+      )}
     </motion.div>
   )
 }

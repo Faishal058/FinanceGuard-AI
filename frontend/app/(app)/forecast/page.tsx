@@ -48,6 +48,17 @@ export default function ForecastPage() {
     }
   }
 
+  const handleExport = () => {
+    if (!forecastData) return
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(forecastData, null, 2))
+    const downloadAnchor = document.createElement('a')
+    downloadAnchor.setAttribute("href", dataStr)
+    downloadAnchor.setAttribute("download", `financeguard_forecast_${new Date().toISOString().split('T')[0]}.json`)
+    document.body.appendChild(downloadAnchor)
+    downloadAnchor.click()
+    downloadAnchor.remove()
+  }
+
   useEffect(() => {
     fetchForecast()
   }, [])
@@ -146,7 +157,7 @@ export default function ForecastPage() {
             <Button variant="outline" size="sm" onClick={fetchForecast} leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
               Refresh
             </Button>
-            <Button variant="gradient" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} glow>
+            <Button variant="gradient" size="sm" onClick={handleExport} leftIcon={<Download className="h-3.5 w-3.5" />} glow>
               Export Report
             </Button>
           </div>

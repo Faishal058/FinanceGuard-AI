@@ -119,12 +119,16 @@ export default function DashboardPage() {
         description={user ? `Welcome back, ${user.name.split(' ')[0]}. Here's your complete financial overview.` : "Welcome back. Here's your complete financial overview."}
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" leftIcon={<Sparkles className="h-3.5 w-3.5" />}>
-              Ask AI
-            </Button>
-            <Button variant="gradient" size="sm" leftIcon={<Zap className="h-3.5 w-3.5" />} glow>
-              Run Analysis
-            </Button>
+            <Link href={ROUTES.WORKSPACE}>
+              <Button variant="outline" size="sm" leftIcon={<Sparkles className="h-3.5 w-3.5" />}>
+                Ask AI
+              </Button>
+            </Link>
+            <Link href={ROUTES.RISK_ANALYSIS}>
+              <Button variant="gradient" size="sm" leftIcon={<Zap className="h-3.5 w-3.5" />} glow>
+                Run Analysis
+              </Button>
+            </Link>
           </div>
         }
       />

@@ -40,6 +40,20 @@ export async function POST(req: NextRequest) {
     const traceId = 'tr_workflow_' + Math.random().toString(36).substr(2, 9)
     const enkrypt = new EnkryptClient()
 
+    let currentExecId: string | null = null
+    const updateStep = async (stepName: string, status: 'completed' | 'failed', durationMs: number) => {
+      if (!currentExecId) return
+      try {
+        const db = getDbClient()
+        await db.execute({
+          sql: `UPDATE workflow_steps SET status = ?, duration_ms = ?, completed_at = CURRENT_TIMESTAMP WHERE execution_id = ? AND step_name = ?`,
+          args: [status, durationMs, currentExecId, stepName],
+        })
+      } catch (err) {
+        console.warn(`Failed to update step status for ${stepName}`, err)
+      }
+    }
+
     // 2. Input Guard Validation
     const inputGuardResult = await enkrypt.validateText(
       query,
@@ -109,6 +123,7 @@ export async function POST(req: NextRequest) {
     workflow.addStep({
       id: 'profile',
       handler: async () => {
+        const stepStart = Date.now()
         // Use real stored metrics instead of fake hardcoded transactions
         profileResult = {
           user_id: user.userId,
@@ -151,6 +166,7 @@ export async function POST(req: NextRequest) {
             model_version: 'stored-profile-v1',
           },
         }
+        await updateStep('Profile Builder', 'completed', Date.now() - stepStart)
         return profileResult
       },
     })
@@ -164,14 +180,18 @@ export async function POST(req: NextRequest) {
         {
           id: 'risk',
           handler: async () => {
+            const stepStart = Date.now()
             riskResult = await runRiskAgent(user.userId, profileResult)
+            await updateStep('Risk Agent', 'completed', Date.now() - stepStart)
             return riskResult
           },
         },
         {
           id: 'forecast',
           handler: async () => {
+            const stepStart = Date.now()
             forecastResult = await runForecastAgent(user.userId, profileResult, 12)
+            await updateStep('Forecast Agent', 'completed', Date.now() - stepStart)
             return forecastResult
           },
         },
@@ -188,6 +208,7 @@ export async function POST(req: NextRequest) {
     workflow.addStep({
       id: 'advisory',
       handler: async () => {
+        const stepStart = Date.now()
         advisorResult = await runAdvisorAgent(
           user.userId,
           sessionId,
@@ -196,6 +217,7 @@ export async function POST(req: NextRequest) {
           riskResult,
           forecastResult
         )
+        await updateStep('Advisor Agent', 'completed', Date.now() - stepStart)
         return advisorResult
       },
     })
@@ -266,7 +288,8 @@ export async function POST(req: NextRequest) {
 
     if (!usedRedis) {
       // Write workflow execution start record
-      const execId = 'wf_' + Math.random().toString(36).substr(2, 9)
+      currentExecId = 'wf_' + Math.random().toString(36).substr(2, 9)
+      const execId = currentExecId
       const db = getDbClient()
       try {
         await db.execute({
