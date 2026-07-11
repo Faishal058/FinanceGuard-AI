@@ -1,3 +1,16 @@
+// Polyfill browser globals for pdfjs-dist legacy loader on Node.js
+if (typeof global !== 'undefined') {
+  if (typeof (global as any).DOMMatrix === 'undefined') {
+    (global as any).DOMMatrix = class DOMMatrix {}
+  }
+  if (typeof (global as any).ImageData === 'undefined') {
+    (global as any).ImageData = class ImageData {}
+  }
+  if (typeof (global as any).Path2D === 'undefined') {
+    (global as any).Path2D = class Path2D {}
+  }
+}
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient, initDb } from '@/lib/backend/db'
 import { authenticateUser } from '@/lib/backend/auth'
