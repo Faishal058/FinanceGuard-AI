@@ -304,6 +304,8 @@ export class QdrantClientWrapper {
       console.error('Qdrant delete by user failed', e)
       return false
     }
+  }
+
   async scrollPoints(collectionName: string, userId: string, limit = 100): Promise<any[]> {
     if (this.useMock) {
       await ensureFallbackTable()
