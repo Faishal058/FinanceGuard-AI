@@ -165,7 +165,7 @@ export default function ObservabilityPage() {
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={latencyHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={latencyHistory} margin={{ top: 10, right: 10, left: 15, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorP50" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
@@ -178,7 +178,7 @@ export default function ObservabilityPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="time" stroke="#64748b" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#64748b" fontSize={11} tickLine={false} unit="ms" />
+                  <YAxis stroke="#64748b" fontSize={11} tickLine={false} unit="ms" width={75} />
                   <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle} />
                   <Area type="monotone" dataKey="p50" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorP50)" name="P50 Latency" />
                   <Area type="monotone" dataKey="p95" stroke="#f59e0b" strokeWidth={1.5} fill="none" strokeDasharray="4 4" name="P95 Latency" />
@@ -195,10 +195,10 @@ export default function ObservabilityPage() {
             <SectionHeader title="Throughput" description="Requests per minute" className="mb-5" />
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={throughputHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <LineChart data={throughputHistory} margin={{ top: 10, right: 10, left: 15, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="time" stroke="#64748b" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+                  <YAxis stroke="#64748b" fontSize={11} tickLine={false} width={50} />
                   <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle} />
                   <Line type="monotone" dataKey="requests" stroke="#6366f1" strokeWidth={2.5} dot={{ fill: '#6366f1', strokeWidth: 2 }} activeDot={{ r: 6 }} name="Requests" />
                 </LineChart>
