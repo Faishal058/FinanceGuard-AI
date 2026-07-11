@@ -1,6 +1,9 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { ApiClient } from '@/lib/api-client'
+import { EmptyState } from '@/components/common/empty-state'
 import { GlassCard } from '@/components/common/glass-card'
 import { PageHeader, SectionHeader } from '@/components/common/page-header'
 import { StatusBadge } from '@/components/common/status-badge'
@@ -54,6 +57,58 @@ const stepStatusIcon = (status: string) => {
 }
 
 export default function WorkflowsPage() {
+  const [loading, setLoading] = useState(true)
+  const [hasDocs, setHasDocs] = useState(false)
+
+  useEffect(() => {
+    async function checkDocs() {
+      try {
+        const res = await ApiClient.get('/api/v2/dashboard')
+        if (res && res.metrics && res.metrics.documentCount > 0) {
+          setHasDocs(true)
+        }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    checkDocs()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+
+  if (!hasDocs) {
+    return (
+      <motion.div
+        className="space-y-8 p-6 md:p-8 max-w-[1400px] mx-auto"
+        variants={pageVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <PageHeader
+          title="Workflows"
+          description="Multi-step AI orchestration pipelines powered by Mastra with full OpenTelemetry tracing"
+        />
+        <EmptyState
+          preset="agents"
+          title="No Active Workflows"
+          description="Please upload your bank statement or CSV files in the Documents page to trigger the Mastra agent execution workflows."
+          action={{
+            label: "Go to Documents",
+            onClick: () => window.location.href = "/documents",
+            variant: "gradient"
+          }}
+        />
+      </motion.div>
+    )
+  }
   const total = workflows.length
   const completed = workflows.filter(w => w.status === 'completed').length
   const running = workflows.filter(w => w.status === 'running').length

@@ -1,6 +1,9 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { ApiClient } from '@/lib/api-client'
+import { EmptyState } from '@/components/common/empty-state'
 import { GlassCard } from '@/components/common/glass-card'
 import { PageHeader, SectionHeader, ConfidenceBar } from '@/components/common/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -81,6 +84,59 @@ const priorityConfig = {
 }
 
 export default function AdvisorPage() {
+  const [loading, setLoading] = useState(true)
+  const [hasDocs, setHasDocs] = useState(false)
+
+  useEffect(() => {
+    async function checkDocs() {
+      try {
+        const res = await ApiClient.get('/api/v2/dashboard')
+        if (res && res.metrics && res.metrics.documentCount > 0) {
+          setHasDocs(true)
+        }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    checkDocs()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+
+  if (!hasDocs) {
+    return (
+      <motion.div
+        className="space-y-8 p-6 md:p-8 max-w-[1400px] mx-auto"
+        variants={pageVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <PageHeader
+          title="Financial Advisor"
+          description="Personalized AI recommendations to optimize your financial health"
+        />
+        <EmptyState
+          preset="folder"
+          title="No Advisory Recommendations"
+          description="Please upload your bank statement or CSV files in the Documents page to trigger the AI Advisor Agent."
+          action={{
+            label: "Go to Documents",
+            onClick: () => window.location.href = "/documents",
+            variant: "gradient"
+          }}
+        />
+      </motion.div>
+    )
+  }
+
   return (
     <motion.div
       className="space-y-8 p-6 md:p-8 max-w-[1400px] mx-auto"
