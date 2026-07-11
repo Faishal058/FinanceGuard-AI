@@ -232,7 +232,8 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ## 👥 Contributors
 
-* **Faishal Rahman Ansari** - Lead AI Engineer & Fullstack Architect
+* **Faishal Rahman Ansari**
+* **Bhuvan Nagesh**
 
 ---
 
@@ -243,11 +244,6 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 * **Featherless AI** for providing high-throughput access to state-of-the-art open models.
 * **Enkrypt AI** for making AI applications secure and aligned.
 * **HiDevs** and **AI House Bengaluru** for organizing this hackathon.
-
----
-
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
