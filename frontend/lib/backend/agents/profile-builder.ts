@@ -94,7 +94,8 @@ export async function runProfileBuilderAgent(
   // If date ranges are different, normalise to single month averages.
   const diffTime = Math.abs(new Date(dataPeriod.end).getTime() - new Date(dataPeriod.start).getTime())
   const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) || 30
-  const monthFactor = 30 / diffDays
+  // BUG-07 FIX: cap monthFactor at 1.0 — single-day CSVs should NOT inflate 30x
+  const monthFactor = Math.min(1.0, 30 / Math.max(diffDays, 30))
 
   grossIncome = parseFloat((grossIncome * monthFactor).toFixed(2))
   totalExpenses = parseFloat((totalExpenses * monthFactor).toFixed(2))
@@ -113,16 +114,21 @@ export async function runProfileBuilderAgent(
   const debt_to_income = grossIncome > 0 ? parseFloat((monthlyDebt / grossIncome).toFixed(3)) : 0
   const savings_rate = grossIncome > 0 ? parseFloat((Math.max(0, grossIncome - totalExpenses) / grossIncome * 100).toFixed(1)) : 0
 
-  // Net worth: sum active account balances if they exist
-  // For mock-based profiles we can query the user's balances or set defaults
-  const checkingBalance = 45230.00
-  const emergencyBalance = 125000.00
-  const investmentBalance = 342220.00
-  const mortgageBalance = -89000.00
-  const creditCardBalance = -3220.00
-  const computedNetWorth = checkingBalance + emergencyBalance + investmentBalance + mortgageBalance + creditCardBalance
+  // BUG-02 FIX: Estimate net worth from cumulative surplus instead of always 0.
+  // A bank statement doesn't have balances, so we derive wealth from: prior net worth + new surplus.
+  const monthlySurplus = Math.max(0, grossIncome - totalExpenses)
+  const estimatedSurplusAccumulation = monthlySurplus * (diffDays / 30) // proportional to period
+  const existingNetWorth = (existing?.net_worth && (existing.net_worth as number) > 0)
+    ? (existing.net_worth as number)
+    : 0
+  // If no prior net worth, seed it with 6 months of estimated surplus as a conservative baseline
+  const computedNetWorth = existingNetWorth > 0
+    ? existingNetWorth + estimatedSurplusAccumulation
+    : monthlySurplus * 6
 
-  const emergency_fund_ratio = totalExpenses > 0 ? parseFloat((emergencyBalance / totalExpenses).toFixed(1)) : 0
+  // Emergency fund ratio: approximate as 2 months surplus
+  const emergencyBalance = monthlySurplus * 2
+  const emergency_fund_ratio = totalExpenses > 0 && emergencyBalance > 0 ? parseFloat((emergencyBalance / totalExpenses).toFixed(1)) : 0
 
   // 4. Check for 5% variance from existing database values to avoid redundant updates
   let profile_updated = false
@@ -144,16 +150,17 @@ export async function runProfileBuilderAgent(
   // 5. Update user_profiles table if changed or new
   if (profile_updated) {
     await db.execute({
-      sql: `INSERT OR REPLACE INTO user_profiles (user_id, email, name, role, net_worth, debt_to_income_ratio, risk_tolerance_score, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      sql: `UPDATE user_profiles 
+            SET net_worth = ?, debt_to_income_ratio = ?, risk_tolerance_score = ?, 
+                monthly_gross = ?, monthly_burn = ?, last_updated = CURRENT_TIMESTAMP
+            WHERE user_id = ?`,
       args: [
-        userId,
-        existing?.email || 'user@example.com',
-        existing?.name || 'Alexa',
-        existing?.role || 'user',
         computedNetWorth,
         debt_to_income,
         existing?.risk_tolerance_score || 5,
+        grossIncome,
+        totalExpenses,
+        userId,
       ],
     })
   }

@@ -29,6 +29,10 @@ export class ApiClient {
     })
 
     if (!response.ok) {
+      if (response.status === 401 && typeof window !== 'undefined') {
+        localStorage.removeItem('fg_token')
+        window.location.href = '/login'
+      }
       let errData = { error: 'Unknown API error' }
       try {
         errData = await response.json()
@@ -75,6 +79,10 @@ export class ApiClient {
     })
 
     if (!response.ok) {
+      if (response.status === 401 && typeof window !== 'undefined') {
+        localStorage.removeItem('fg_token')
+        window.location.href = '/login'
+      }
       let errData = { error: 'Upload failed' }
       try {
         errData = await response.json()

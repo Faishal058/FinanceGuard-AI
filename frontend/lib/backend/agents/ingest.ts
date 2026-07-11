@@ -4,6 +4,7 @@ import { QdrantClientWrapper } from '../qdrant'
 import { PromptRegistry } from '../prompt-registry'
 import { getEmbedding } from '../embeddings'
 import { mastra } from '../mastra-init'
+import { runProfileBuilderAgent } from './profile-builder'
 
 export interface RawTransaction {
   date: string | null
@@ -66,6 +67,82 @@ function heuristicCategorize(description: string, amount: number): string {
     return 'TRANSFER'
   }
   return 'OTHER'
+}
+
+// Parse standard columnar CSV bank statements (date,description,amount,[category])
+function parseCsvTransactions(csvText: string): RawTransaction[] | null {
+  const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean)
+  if (lines.length < 2) return null
+
+  // Detect header row
+  const header = lines[0].toLowerCase()
+  if (!header.includes(',')) return null // not CSV format
+
+  const cols = header.split(',').map(c => c.replace(/"/g, '').trim())
+  const dateIdx = cols.findIndex(c => c === 'date' || c === 'transaction_date' || c === 'posted_date')
+  const descIdx = cols.findIndex(c => c === 'description' || c === 'memo' || c === 'narration' || c === 'particulars')
+  const amtIdx  = cols.findIndex(c => c === 'amount' || c === 'debit/credit' || c === 'value')
+
+  if (dateIdx === -1 || descIdx === -1 || amtIdx === -1) return null // not a recognizable CSV
+
+  const catIdx = cols.findIndex(c => c === 'category' || c === 'type')
+  const transactions: RawTransaction[] = []
+
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].split(',').map(p => p.replace(/"/g, '').trim())
+    if (parts.length < 3) continue
+
+    const dateStr = parts[dateIdx] || ''
+    const desc    = parts[descIdx] || ''
+    const amtStr  = (parts[amtIdx] || '').replace(/[₹$€£,\s]/g, '')
+    const amount  = parseFloat(amtStr)
+
+    if (!dateStr || isNaN(amount)) continue
+
+    // Normalize date to YYYY-MM-DD
+    let normalizedDate = dateStr
+    if (dateStr.includes('/')) {
+      const p = dateStr.split('/')
+      if (p.length === 3) {
+        if (p[2].length === 4) {
+          normalizedDate = `${p[2]}-${p[0].padStart(2, '0')}-${p[1].padStart(2, '0')}`
+        } else {
+          normalizedDate = `${p[0]}-${p[1].padStart(2, '0')}-${p[2].padStart(2, '0')}`
+        }
+      }
+    }
+
+    // Use category column if present, else heuristic
+    let category: string
+    if (catIdx !== -1 && parts[catIdx]) {
+      const rawCat = parts[catIdx].toUpperCase()
+      const catMap: Record<string, string> = {
+        INCOME: 'INCOME', SALARY: 'INCOME', PAYROLL: 'INCOME',
+        HOUSING: 'HOUSING', RENT: 'HOUSING', MORTGAGE: 'HOUSING',
+        FOOD: 'FOOD', GROCERIES: 'FOOD', RESTAURANT: 'FOOD', DINING: 'FOOD',
+        TRANSPORT: 'TRANSPORT', TRANSPORTATION: 'TRANSPORT', GAS: 'TRANSPORT',
+        UTILITIES: 'UTILITIES', UTILITY: 'UTILITIES',
+        ENTERTAINMENT: 'ENTERTAINMENT', SUBSCRIPTION: 'ENTERTAINMENT',
+        HEALTH: 'HEALTHCARE', HEALTHCARE: 'HEALTHCARE',
+        SAVINGS: 'SAVINGS', DEBT_PAYMENT: 'DEBT_PAYMENT', BUSINESS: 'OTHER',
+      }
+      category = catMap[rawCat] || heuristicCategorize(desc, amount)
+    } else {
+      category = heuristicCategorize(desc, amount)
+    }
+
+    transactions.push({
+      date: normalizedDate,
+      amount,
+      category,
+      merchant: desc.split(/\s+/).slice(0, 3).join(' '),
+      description: desc,
+      flagged: false,
+      flag_reason: null,
+    })
+  }
+
+  return transactions.length > 0 ? transactions : null
 }
 
 // Locally parses unstructured statement lines using heuristics
@@ -160,69 +237,87 @@ export async function runIngestAgent(
 
   let transactions: RawTransaction[] = []
 
-  // Check if OpenAI API key is present for smart parsing
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const mastraAgent = mastra.getAgent('ingest')
-      const promptObj = await PromptRegistry.fetchPrompt('ingest')
-      
-      const apiKey = process.env.OPENAI_API_KEY || ''
-      const isOpenRouter = apiKey.startsWith('sk-or-')
-      const isFeatherless = apiKey.startsWith('fl-') || apiKey.startsWith('rc_')
-      
-      let apiUrl = 'https://api.openai.com/v1/chat/completions'
-      let modelId = promptObj.model_id
+  // For CSV files: try the structured column parser FIRST (handles date,description,amount,category format)
+  if (document_type === 'csv_export') {
+    const csvParsed = parseCsvTransactions(fileText)
+    if (csvParsed && csvParsed.length > 0) {
+      transactions = csvParsed
+      console.log(`CSV column parser extracted ${transactions.length} transactions from ${fileName}`)
+    }
+  }
 
-      if (isOpenRouter) {
-        apiUrl = 'https://openrouter.ai/api/v1/chat/completions'
-        modelId = 'google/gemini-2.5-flash:free'
-      } else if (isFeatherless) {
-        apiUrl = 'https://api.featherless.ai/v1/chat/completions'
-        modelId = 'Qwen/Qwen2.5-7B-Instruct'
-      }
+  // If CSV parser didn't work or it's a PDF, try AI parser, then fall back to regex
+  if (transactions.length === 0) {
+    // Check if OpenAI API key is present for smart parsing
+    const apiKey = process.env.OPENAI_API_KEY || ''
+    const isFeatherless = apiKey.startsWith('fl-') || apiKey.startsWith('rc_')
+    const isRealOpenAI = apiKey.startsWith('sk-') && !apiKey.startsWith('sk-or-')
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+    if (apiKey && isRealOpenAI) {
+      try {
+        const promptObj = await PromptRegistry.fetchPrompt('ingest')
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model: promptObj.model_id,
+            temperature: promptObj.temperature,
+            top_p: promptObj.top_p,
+            max_tokens: promptObj.max_tokens,
+            messages: [
+              { role: 'system', content: promptObj.prompt_text },
+              { role: 'user', content: `Document Name: ${fileName}\n\nDocument Text:\n${fileText.substring(0, 8000)}` },
+            ],
+            response_format: { type: 'json_object' },
+          }),
+        })
+        const data = await response.json()
+        const resultObj = JSON.parse(data.choices[0].message.content)
+        if (resultObj.transactions) transactions = resultObj.transactions
+      } catch (e) {
+        console.warn('OpenAI Parsing failed, falling back to regex parser', e)
+        transactions = parseTextToTransactions(fileText)
       }
-      if (isOpenRouter) {
-        headers['HTTP-Referer'] = 'http://localhost:3000'
-        headers['X-Title'] = 'FinanceGuard'
-      }
+    } else if (apiKey && !isRealOpenAI) {
+      // Featherless / OpenRouter key — try with the right endpoint
+      try {
+        const promptObj = await PromptRegistry.fetchPrompt('ingest')
+        const isOpenRouter = apiKey.startsWith('sk-or-')
+        const apiUrl = isOpenRouter
+          ? 'https://openrouter.ai/api/v1/chat/completions'
+          : 'https://api.featherless.ai/v1/chat/completions'
+        const modelId = isOpenRouter
+          ? 'google/gemini-2.5-flash:free'
+          : (process.env.FEATHERLESS_MODEL || 'deepseek-ai/DeepSeek-V4-Pro')
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`,
+        }
+        if (isOpenRouter) { headers['HTTP-Referer'] = 'http://localhost:3000'; headers['X-Title'] = 'FinanceGuard' }
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: modelId,
-          temperature: promptObj.temperature,
-          top_p: promptObj.top_p,
-          max_tokens: promptObj.max_tokens,
-          messages: [
-            {
-              role: 'system',
-              content: promptObj.prompt_text,
-            },
-            {
-              role: 'user',
-              content: `Document Name: ${fileName}\n\nDocument Text:\n${fileText.substring(0, 8000)}`,
-            },
-          ],
-          response_format: { type: 'json_object' },
-        }),
-      })
-
-      const data = await response.json()
-      const resultObj = JSON.parse(data.choices[0].message.content)
-      if (resultObj.transactions) {
-        transactions = resultObj.transactions
+        const response = await fetch(apiUrl, {
+          method: 'POST', headers,
+          body: JSON.stringify({
+            model: modelId, temperature: 0.1, max_tokens: 4096,
+            messages: [
+              { role: 'system', content: promptObj.prompt_text },
+              { role: 'user', content: `Document Name: ${fileName}\n\nDocument Text:\n${fileText.substring(0, 8000)}` },
+            ],
+          }),
+        })
+        const data = await response.json()
+        const content = data.choices?.[0]?.message?.content || ''
+        const jsonMatch = content.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          const resultObj = JSON.parse(jsonMatch[0])
+          if (resultObj.transactions) transactions = resultObj.transactions
+        }
+      } catch (e) {
+        console.warn('AI Parsing failed, falling back to regex parser', e)
+        transactions = parseTextToTransactions(fileText)
       }
-    } catch (e) {
-      console.warn('AI Parsing failed, falling back to regex parser', e)
+    } else {
       transactions = parseTextToTransactions(fileText)
     }
-  } else {
-    transactions = parseTextToTransactions(fileText)
   }
 
   // Calculate metrics
@@ -237,6 +332,15 @@ export async function runIngestAgent(
     validDates.sort()
     start = validDates[0]
     end = validDates[validDates.length - 1]
+  }
+
+  // Run profile builder to update income/expense metrics in user_profiles
+  if (transactions.length > 0) {
+    try {
+      await runProfileBuilderAgent(userId, transactions, { start, end })
+    } catch (e) {
+      console.warn('Profile builder failed (non-fatal):', e)
+    }
   }
 
   // 1. Chunk document text

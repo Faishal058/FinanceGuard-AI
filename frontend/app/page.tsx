@@ -1046,7 +1046,7 @@ function ProductPreviewSection() {
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                       <XAxis dataKey="month" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 12 }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}M`} />
-                      <Tooltip contentStyle={{ background: "#0d0d22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "white", fontSize: 12 }} formatter={(v: number | undefined) => v !== undefined ? `$${v}M` : "—"} />
+                      <Tooltip contentStyle={{ background: "#0d0d22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "white", fontSize: 12 }} formatter={(v: any) => v !== undefined ? `$${v}M` : "—"} />
                       <Area type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2.5} fill="url(#rev2)" name="Actual" />
                       <Area type="monotone" dataKey="forecast" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="6 3" fill="url(#fc2)" name="AI Forecast" />
                     </AreaChart>
@@ -1358,7 +1358,6 @@ export default function LandingPage() {
       <ArchitectureSection />
       <SecuritySection />
       <ProductPreviewSection />
-      <TestimonialsSection />
       <FAQSection />
       <CTASection />
       <Footer />

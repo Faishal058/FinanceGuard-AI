@@ -3,9 +3,7 @@ import { RiskReportResult } from './risk'
 import { ForecastResult } from './forecast'
 import { QdrantClientWrapper } from '../qdrant'
 import { EnkryptClient } from '../enkrypt'
-import { PromptRegistry } from '../prompt-registry'
 import { getEmbedding } from '../embeddings'
-import { mastra } from '../mastra-init'
 
 export interface KeyFinding {
   finding: string
@@ -59,6 +57,7 @@ export async function runAdvisorAgent(
 ): Promise<AdvisorResult> {
   const qdrant = new QdrantClientWrapper()
   await qdrant.initCollection('user_memory')
+  await qdrant.initCollection('financial_documents')
 
   // 1. Retrieve cross-session memories
   let memories: any[] = []
@@ -72,6 +71,14 @@ export async function runAdvisorAgent(
     console.warn('Failed to retrieve cross-session memories', e)
   }
 
+  // 1b. Retrieve actual financial document context chunks (RAG)
+  let docContexts: any[] = []
+  try {
+    docContexts = await qdrant.searchPoints('financial_documents', query, userId, 4)
+  } catch (e) {
+    console.warn('Failed to retrieve financial document chunks', e)
+  }
+
   let executive_summary = ''
   let key_findings: KeyFinding[] = []
   let action_items: ActionItem[] = []
@@ -81,26 +88,28 @@ export async function runAdvisorAgent(
   const savingsPercent = profile.ratios.savings_rate !== null ? profile.ratios.savings_rate.toFixed(1) : 'N/A'
   const emergencyMonths = profile.ratios.emergency_fund_ratio !== null ? profile.ratios.emergency_fund_ratio.toFixed(1) : 'N/A'
 
-  // 2. Synthesize using OpenAI or local rule-engine
-  if (process.env.OPENAI_API_KEY) {
+  // 2. Synthesize using LLM or local rule-engine
+  const apiKey = process.env.OPENAI_API_KEY || ''
+  const isOpenRouter = apiKey.startsWith('sk-or-')
+  const isFeatherless = apiKey.startsWith('fl-') || apiKey.startsWith('rc_')
+  const isRealOpenAI = apiKey.length > 10 && !isOpenRouter && !isFeatherless
+
+  if (apiKey) {
     try {
-      const mastraAgent = mastra.getAgent('advisor')
-      const promptObj = await PromptRegistry.fetchPrompt('advisor')
-      const memoryString = memories.map(m => `Query: "${m.payload.query}" -> Advisory Summary: "${m.payload.summary}"`).join('\n')
-      
-      const apiKey = process.env.OPENAI_API_KEY || ''
-      const isOpenRouter = apiKey.startsWith('sk-or-')
-      const isFeatherless = apiKey.startsWith('fl-') || apiKey.startsWith('rc_')
-      
+      const memoryString = memories.map(m => `Query: "${m.payload.query}" -> Summary: "${m.payload.summary}"`).join('\n')
+      const docContextString = docContexts.map((d, i) => `[Doc Chunk #${i+1}]:\n${d.payload.text}`).join('\n\n')
+      const forecast12m = forecast.projections.find(p => p.horizon_months === 12)
+      const forecast60m = forecast.projections.find(p => p.horizon_months === 60)
+
       let apiUrl = 'https://api.openai.com/v1/chat/completions'
-      let modelId = promptObj.model_id
+      let modelId = 'gpt-4o'
 
       if (isOpenRouter) {
         apiUrl = 'https://openrouter.ai/api/v1/chat/completions'
         modelId = 'google/gemini-2.5-flash:free'
       } else if (isFeatherless) {
         apiUrl = 'https://api.featherless.ai/v1/chat/completions'
-        modelId = 'Qwen/Qwen2.5-7B-Instruct'
+        modelId = process.env.FEATHERLESS_MODEL || 'deepseek-ai/DeepSeek-V4-Pro'
       }
 
       const headers: Record<string, string> = {
@@ -112,47 +121,127 @@ export async function runAdvisorAgent(
         headers['X-Title'] = 'FinanceGuard'
       }
 
+      // Self-contained system prompt with full JSON output schema embedded
+      // Do NOT rely on response_format param (not supported by Featherless/DeepSeek)
+      const systemPrompt = `You are a Senior Financial Advisor AI inside the FinanceGuard platform.
+Your job is to analyze the user's real financial data and answer their specific question with personalized, data-driven advice.
+
+CRITICAL RULES:
+- Base your response EXCLUSIVELY on the financial data provided below. Do NOT use generic filler.
+- Reference actual numbers from the user's profile (income, expenses, DTI, savings rate, etc.).
+- Answer the SPECIFIC question the user asked — do not give a generic overview unless asked.
+- Do NOT recommend specific stock tickers or investment products.
+- Keep executive_summary concise (2-4 sentences directly answering the question).
+
+You MUST respond ONLY with a valid JSON object in this EXACT format (no markdown, no extra text):
+{
+  "executive_summary": "Direct answer to the user's question using their real numbers",
+  "key_findings": [
+    {"finding": "Specific finding with real numbers", "source_agent": "Profile/Risk/Forecast Agent", "severity": "INFO|WARNING|CRITICAL"}
+  ],
+  "action_items": [
+    {"priority": 1, "action": "Specific actionable step", "rationale": "Why this matters for this user", "source_citation": "Source", "category": "DEBT|SAVINGS|INCOME|EXPENSES|RISK_MITIGATION|GENERAL", "timeline": "0-30 days"}
+  ],
+  "risk_acknowledgments": ["Relevant risk disclaimer"]
+}`
+
+      const userPrompt = `USER QUESTION: "${query}"
+
+USER'S REAL FINANCIAL PROFILE:
+- Monthly Gross Income: $${profile.income.monthly_gross.toLocaleString()}
+- Monthly Total Expenses: $${profile.expenses.monthly_total.toLocaleString()}
+- Monthly Net Surplus/Deficit: $${(profile.income.monthly_gross - profile.expenses.monthly_total).toLocaleString()}
+- Debt-to-Income (DTI) Ratio: ${dtiPercent}% ${Number(dtiPercent) > 35 ? '⚠️ HIGH' : Number(dtiPercent) > 20 ? '⚠️ MODERATE' : '✅ HEALTHY'}
+- Savings Rate: ${savingsPercent}% ${Number(savingsPercent) < 10 ? '🚨 CRITICAL LOW' : Number(savingsPercent) < 20 ? '⚠️ BELOW TARGET' : '✅ HEALTHY'}
+- Emergency Fund Coverage: ${emergencyMonths} months ${Number(emergencyMonths) < 3 ? '🚨 CRITICAL' : '✅ OK'}
+- Net Worth: $${profile.ratios.net_worth?.toLocaleString() || 'Unknown'}
+
+RISK FLAGS DETECTED:
+${riskReport.risk_flags.length > 0 ? riskReport.risk_flags.map(f => `- ${f.flag_type}: ${f.description} (Severity: ${f.severity}, Value: ${f.metric_value ?? 'N/A'}, Threshold: ${f.benchmark_threshold})`).join('\n') : '- No major risk flags detected'}
+
+FORECAST (Monte Carlo):
+- 12-Month Projected Balance: $${forecast12m?.balance.p50.toLocaleString() || 'N/A'} (median), $${forecast12m?.balance.p10.toLocaleString() || 'N/A'} (pessimistic)
+- 60-Month Projected Balance: $${forecast60m?.balance.p50.toLocaleString() || 'N/A'} (median)
+
+UPLOADED DOCUMENT CONTEXT (RAG):
+${docContextString || 'No uploaded document context available.'}
+
+CONVERSATION HISTORY:
+${memoryString || 'No prior conversation history.'}
+
+Now answer the user's question with specific, personalized advice using these real numbers. Output ONLY the JSON object.`
+
+      const requestBody: any = {
+        model: modelId,
+        temperature: 0.3,
+        max_tokens: 2048,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }
+
+      // Only add response_format for native OpenAI (Featherless/DeepSeek doesn't support it)
+      if (isRealOpenAI) {
+        requestBody.response_format = { type: 'json_object' }
+      }
+
+      console.log(`[Advisor] Calling ${modelId} at ${apiUrl}`)
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          model: modelId,
-          temperature: promptObj.temperature,
-          top_p: promptObj.top_p,
-          max_tokens: promptObj.max_tokens,
-          messages: [
-            {
-              role: 'system',
-              content: promptObj.prompt_text,
-            },
-            {
-              role: 'user',
-              content: `User Query: "${query}"
-User Profile: Income $${profile.income.monthly_gross}/mo, Expenses $${profile.expenses.monthly_total}/mo, DTI: ${dtiPercent}%, Savings Rate: ${savingsPercent}%, Emergency Reserves: ${emergencyMonths} months.
-Risk Report flags: ${JSON.stringify(riskReport.risk_flags)}
-Forecast Median Balance (12m): $${forecast.projections.find(p => p.horizon_months === 12)?.balance.p50 || 'N/A'}
-Historical Context Memories:
-${memoryString}
-`,
-            },
-          ],
-          response_format: { type: 'json_object' },
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       const data = await response.json()
-      const resObj = JSON.parse(data.choices[0].message.content)
-      executive_summary = resObj.executive_summary
-      key_findings = resObj.key_findings
-      action_items = resObj.action_items
-      risk_acknowledgments = resObj.risk_acknowledgments
+
+      // Log error responses for debugging
+      if (!response.ok || data.error) {
+        console.error('[Advisor] API error response:', JSON.stringify(data).substring(0, 500))
+        throw new Error(data.error?.message || `HTTP ${response.status}`)
+      }
+
+      const raw = data?.choices?.[0]?.message?.content
+      console.log('[Advisor] Raw LLM response length:', raw?.length, 'chars')
+
+      if (raw) {
+        try {
+          // Extract JSON from the response (handle markdown code blocks if present)
+          const jsonMatch = raw.match(/\{[\s\S]*\}/)
+          const jsonStr = jsonMatch ? jsonMatch[0] : raw
+          const resObj = JSON.parse(jsonStr)
+
+          executive_summary = resObj.executive_summary || ''
+          key_findings = Array.isArray(resObj.key_findings) ? resObj.key_findings : []
+          action_items = Array.isArray(resObj.action_items) ? resObj.action_items : []
+          risk_acknowledgments = Array.isArray(resObj.risk_acknowledgments) ? resObj.risk_acknowledgments : []
+
+          console.log('[Advisor] LLM synthesis succeeded. Summary length:', executive_summary.length)
+        } catch (parseErr) {
+          console.error('[Advisor] Failed to parse LLM JSON response:', parseErr, '\nRaw:', raw?.substring(0, 300))
+          executive_summary = ''
+        }
+      } else {
+        console.error('[Advisor] LLM returned empty content. Full response:', JSON.stringify(data).substring(0, 500))
+      }
     } catch (e) {
-      console.warn('AI advisor synthesis failed, falling back to rule engine', e)
+      console.error('[Advisor] AI synthesis failed, falling back to rule engine:', e)
     }
   }
 
+
   // Fallback / Rule Engine Generation
-  if (!executive_summary) {
+  // Trigger when AI synthesis did not produce a full valid result
+  const needsFallback = !executive_summary ||
+    !Array.isArray(key_findings) ||
+    !Array.isArray(action_items) ||
+    !Array.isArray(risk_acknowledgments)
+
+  if (needsFallback) {
+    // Re-initialize all arrays defensively
+    if (!Array.isArray(key_findings)) key_findings = []
+    if (!Array.isArray(action_items)) action_items = []
+    if (!Array.isArray(risk_acknowledgments)) risk_acknowledgments = []
     executive_summary = `Your financial overview shows a gross monthly income of $${profile.income.monthly_gross.toLocaleString()} with expenses at $${profile.expenses.monthly_total.toLocaleString()} (${savingsPercent}% savings rate). Your DTI ratio is ${dtiPercent}%, with emergency reserves covering ${emergencyMonths} months of expenditures.`
 
     // Add findings

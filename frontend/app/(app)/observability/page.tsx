@@ -168,7 +168,7 @@ export default function ObservabilityPage() {
                   tickFormatter={v => `${v}ms`}
                 />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#f8fafc' }}
-                  formatter={(v: number) => [`${v}ms`, '']}
+                  formatter={(v: any) => [`${v}ms`, '']}
                 />
                 <Line type="monotone" dataKey="p50" stroke="#10b981" strokeWidth={2} dot={false} name="P50" />
                 <Line type="monotone" dataKey="p95" stroke="#f59e0b" strokeWidth={2} dot={false} name="P95" />
@@ -194,7 +194,7 @@ export default function ObservabilityPage() {
                 <XAxis dataKey="time" tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#f8fafc' }}
-                  formatter={(v: number) => [v, 'Requests']}
+                  formatter={(v: any) => [v, 'Requests']}
                 />
                 <Area type="monotone" dataKey="requests" stroke="#6366f1" strokeWidth={2}
                   fill="url(#throughputGrad)" dot={false} name="Requests"

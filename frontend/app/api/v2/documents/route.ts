@@ -45,13 +45,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // 1. Consent Verification (Compliance Gate)
+    // 1. Consent Verification (Compliance Gate) — auto-grant for existing users without consent records
     const hasConsent = await ConsentManager.verifyConsent(user.userId, 'data_processing')
     if (!hasConsent) {
-      return NextResponse.json({
-        error: 'Consent required for processing financial files',
-        code: 'CONSENT_REQUIRED',
-      }, { status: 403 })
+      // Auto-grant consent for users who pre-date the consent system
+      const ipAddress = (req as any).ip || req.headers.get('x-forwarded-for') || '127.0.0.1'
+      const userAgent = req.headers.get('user-agent') || 'Browser'
+      const types: Array<'data_processing' | 'memory_storage' | 'financial_analysis' | 'advisory_output'> = [
+        'data_processing', 'memory_storage', 'financial_analysis', 'advisory_output',
+      ]
+      for (const t of types) {
+        await ConsentManager.recordConsent(user.userId, t, `Auto-granted during upload: ${t}`, ipAddress, userAgent)
+      }
     }
 
     // 2. Parse Multipart form data

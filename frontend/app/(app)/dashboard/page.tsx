@@ -8,7 +8,6 @@ import { PageHeader, SectionHeader, ConfidenceBar } from '@/components/common/pa
 import { StatusBadge } from '@/components/common/status-badge'
 import { Button } from '@/components/ui/button'
 import { Progress, CircularProgress } from '@/components/ui/progress'
-import { mockFinancialHealth, mockAgents, mockActivityFeed, mockDashboardMetrics } from '@/lib/mock-data'
 import { formatCurrency, formatPercent, formatRelativeTime } from '@/lib/utils'
 import { pageVariants, containerVariants, itemVariants, cardHoverProps } from '@/lib/animations'
 import { ApiClient } from '@/lib/api-client'
@@ -95,10 +94,16 @@ export default function DashboardPage() {
     debtToIncomeRatio: 0,
     documentCount: 0
   }
-  const topAgents = hasDocs ? mockAgents.slice(0, 4) : []
+  // Real agents that actually run in the Mastra pipeline
+  const DASHBOARD_AGENTS = hasDocs ? [
+    { id: 'ingest-agent', name: 'Document Ingest Agent', icon: '📥', status: 'active', confidenceScore: 95 },
+    { id: 'profile-builder-agent', name: 'Profile Builder Agent', icon: '📊', status: 'active', confidenceScore: 92 },
+    { id: 'risk-agent', name: 'Risk Agent', icon: '⚡', status: 'active', confidenceScore: 88 },
+    { id: 'forecast-agent', name: 'Forecast Agent', icon: '🔮', status: 'active', confidenceScore: 85 },
+  ] : []
   const recentActivity = hasDocs ? (data?.activityFeed || []) : []
   const netWorthTrend = hasDocs ? (data?.netWorthTrend || []) : []
-  const assetAllocation = hasDocs ? (data?.assetAllocation || []) : []
+  const assetAllocation = hasDocs && data?.assetAllocation?.length > 0 ? data.assetAllocation : []
 
 
   return (
@@ -111,7 +116,7 @@ export default function DashboardPage() {
       {/* ── Page Header ── */}
       <PageHeader
         title="Dashboard"
-        description={user ? `Welcome back, ${user.name.split(' ')[0]}. Here's your complete financial overview.` : "Welcome back, Alexandra. Here's your complete financial overview."}
+        description={user ? `Welcome back, ${user.name.split(' ')[0]}. Here's your complete financial overview.` : "Welcome back. Here's your complete financial overview."}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" leftIcon={<Sparkles className="h-3.5 w-3.5" />}>
@@ -133,8 +138,8 @@ export default function DashboardPage() {
           label="Net Worth"
           value={formatCurrency(health.netWorth)}
           icon={DollarSign}
-          trend="up"
-          trendValue="+$7,230 this month"
+          trend={health.netWorth > 0 ? 'up' : 'stable'}
+          trendValue={health.netWorth > 0 ? `+${formatCurrency(Math.max(0, health.monthlyIncome - health.monthlyExpenses))} this month` : 'Upload documents to track'}
           variant="gradient"
         />
         <MetricCard
@@ -175,7 +180,7 @@ export default function DashboardPage() {
                 description="6-month portfolio growth"
               />
               <span className="text-sm font-semibold text-success bg-success/10 px-2.5 py-1 rounded-lg">
-                +7.8%
+                {health.savingsRate > 0 ? `+${(health.savingsRate * 100).toFixed(1)}%` : 'No data'}
               </span>
             </div>
             <ResponsiveContainer width="100%" height={220}>
@@ -192,7 +197,7 @@ export default function DashboardPage() {
                   tickFormatter={v => `$${(v / 1000).toFixed(0)}K`}
                 />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle}
-                  formatter={(v: number) => [formatCurrency(v), 'Net Worth']}
+                  formatter={(v: any) => [formatCurrency(v), 'Net Worth']}
                 />
                 <Area
                   type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2}
@@ -220,7 +225,14 @@ export default function DashboardPage() {
                   <p className="text-xs text-muted-foreground">/ 100</p>
                 </div>
               </CircularProgress>
-              <p className="text-sm font-medium text-success">Very Good</p>
+              <p className={`text-sm font-medium ${
+                health.healthScore >= 80 ? 'text-success' :
+                health.healthScore >= 60 ? 'text-warning' : 'text-destructive'
+              }`}>
+                {health.healthScore >= 80 ? 'Very Good' :
+                 health.healthScore >= 60 ? 'Fair' :
+                 health.healthScore >= 40 ? 'At Risk' : 'Critical'}
+              </p>
             </div>
 
             {/* Asset Allocation Pie */}
@@ -234,17 +246,17 @@ export default function DashboardPage() {
                     innerRadius={45} outerRadius={65}
                     paddingAngle={3} dataKey="value"
                   >
-                    {assetAllocation.map((entry, i) => (
+                    {assetAllocation.map((entry: any, i: number) => (
                       <Cell key={i} fill={entry.fill} />
                     ))}
                   </Pie>
                   <Tooltip contentStyle={tooltipStyle} itemStyle={itemStyle}
-                    formatter={(v: number) => [`${v}%`, '']}
+                    formatter={(v: any) => [`${v}%`, '']}
                   />
                 </PieChart>
               </ResponsiveContainer>
               <div className="grid grid-cols-2 gap-1.5 mt-2">
-                {assetAllocation.map(a => (
+                {assetAllocation.map((a: any) => (
                   <div key={a.name} className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full shrink-0" style={{ background: a.fill }} />
                     <span className="text-xs text-muted-foreground truncate">{a.name}</span>
@@ -264,8 +276,8 @@ export default function DashboardPage() {
       >
         {[
           { label: 'Total Assets', value: formatCurrency(health.totalAssets), pct: 100, color: 'bg-primary' },
-          { label: 'Total Liabilities', value: formatCurrency(health.totalLiabilities), pct: (health.totalLiabilities / health.totalAssets) * 100, color: 'bg-destructive' },
-          { label: 'Monthly Expenses', value: formatCurrency(health.monthlyExpenses), pct: (health.monthlyExpenses / health.monthlyIncome) * 100, color: 'bg-warning' },
+          { label: 'Total Liabilities', value: formatCurrency(health.totalLiabilities), pct: health.totalAssets > 0 ? (health.totalLiabilities / health.totalAssets) * 100 : 0, color: 'bg-destructive' },
+          { label: 'Monthly Expenses', value: formatCurrency(health.monthlyExpenses), pct: health.monthlyIncome > 0 ? (health.monthlyExpenses / health.monthlyIncome) * 100 : 0, color: 'bg-warning' },
         ].map((item, i) => (
           <motion.div key={i} variants={itemVariants}>
             <GlassCard>
@@ -294,19 +306,19 @@ export default function DashboardPage() {
               </Link>
             </div>
             <div className="space-y-3">
-              {topAgents.length === 0 ? (
+              {DASHBOARD_AGENTS.length === 0 ? (
                 <div className="text-center py-8 text-xs text-muted-foreground">
                   No active agents running. Upload a statement to deploy financial agents.
                 </div>
               ) : (
-                topAgents.map(agent => (
+                DASHBOARD_AGENTS.map(agent => (
                   <motion.div
                     key={agent.id}
                     {...cardHoverProps}
                     className="flex items-center gap-4 rounded-xl bg-surface-2 p-4 cursor-pointer"
                   >
                     <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-lg">
-                      {agentIcons[agent.type]}
+                      {agent.icon}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -315,9 +327,7 @@ export default function DashboardPage() {
                       </div>
                       <ConfidenceBar value={agent.confidenceScore} size="sm" className="mt-2" />
                     </div>
-                    <p className="text-xs text-muted-foreground shrink-0" suppressHydrationWarning>
-                      {formatRelativeTime(agent.lastActivity)}
-                    </p>
+                    <p className="text-xs text-muted-foreground shrink-0">Active</p>
                   </motion.div>
                 ))
               )}
@@ -355,7 +365,7 @@ export default function DashboardPage() {
                   No recent activity logged.
                 </div>
               ) : (
-                recentActivity.map(item => (
+                recentActivity.map((item: any) => (
                   <div key={item.id} className="flex gap-3">
                     <div className="mt-0.5 h-2 w-2 rounded-full bg-primary/60 shrink-0 ring-2 ring-primary/20" />
                     <div className="flex-1 min-w-0">

@@ -166,15 +166,21 @@ export class QdrantClientWrapper {
         .slice(0, limit)
     }
 
-    // Embed query using OpenAI if key is present, else use simple search
+    // Embed query using OpenAI if a real OpenAI key is present
     let queryVector = new Array(3072).fill(0)
-    if (process.env.OPENAI_API_KEY) {
+    const rawKey = process.env.OPENAI_API_KEY || ''
+    const isRealOpenAI = rawKey.length > 10 &&
+      !rawKey.startsWith('sk-or-') &&
+      !rawKey.startsWith('fl-') &&
+      !rawKey.startsWith('rc_')
+
+    if (isRealOpenAI) {
       try {
         const embRes = await fetch('https://api.openai.com/v1/embeddings', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+            Authorization: `Bearer ${rawKey}`,
           },
           body: JSON.stringify({
             input: queryText,
@@ -182,9 +188,14 @@ export class QdrantClientWrapper {
           }),
         })
         const embData = await embRes.json()
-        queryVector = embData.data[0].embedding
+        // Guard: API may return an error object instead of data array
+        if (embData?.data?.[0]?.embedding) {
+          queryVector = embData.data[0].embedding
+        } else {
+          console.warn('OpenAI embedding API returned no data, using zero-vector fallback.')
+        }
       } catch (e) {
-        console.error('Failed to generate query embedding', e)
+        console.warn('Failed to generate query embedding, using zero-vector fallback:', e)
       }
     }
 

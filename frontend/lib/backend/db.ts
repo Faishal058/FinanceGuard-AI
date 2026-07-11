@@ -38,9 +38,15 @@ export async function initDb() {
       net_worth REAL DEFAULT 0.0,
       debt_to_income_ratio REAL DEFAULT 0.0,
       risk_tolerance_score INTEGER DEFAULT 5,
+      monthly_gross REAL DEFAULT 0.0,
+      monthly_burn REAL DEFAULT 0.0,
       last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `)
+
+  // Add columns if they don't exist yet (for existing databases)
+  try { await db.execute(`ALTER TABLE user_profiles ADD COLUMN monthly_gross REAL DEFAULT 0.0`) } catch (_) {}
+  try { await db.execute(`ALTER TABLE user_profiles ADD COLUMN monthly_burn REAL DEFAULT 0.0`) } catch (_) {}
 
   // Session State Table (Mastra Persistence)
   await db.execute(`
@@ -195,6 +201,37 @@ export async function initDb() {
       refresh_token TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(user_id) REFERENCES user_profiles(user_id)
+    );
+  `)
+
+  // Workflow Execution Tracking
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS workflow_executions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running', -- 'running', 'completed', 'failed', 'pending_approval'
+      trace_id TEXT,
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME,
+      duration_ms INTEGER,
+      error_message TEXT,
+      FOREIGN KEY(user_id) REFERENCES user_profiles(user_id)
+    );
+  `)
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS workflow_steps (
+      id TEXT PRIMARY KEY,
+      execution_id TEXT NOT NULL,
+      step_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'running', 'completed', 'failed'
+      started_at DATETIME,
+      completed_at DATETIME,
+      duration_ms INTEGER,
+      error_message TEXT,
+      FOREIGN KEY(execution_id) REFERENCES workflow_executions(id)
     );
   `)
 

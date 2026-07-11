@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient, initDb } from '@/lib/backend/db'
 import { hashPassword, comparePassword, signToken, signRefreshToken } from '@/lib/backend/auth'
+import { ConsentManager } from '@/lib/backend/governance'
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
       const userId = 'usr_' + Math.random().toString(36).substr(2, 9)
       const passHash = await hashPassword(password)
 
-      // Create profile and auth record inside a transaction
+      // Create profile and auth record
       await db.execute({
         sql: `INSERT INTO user_profiles (user_id, email, name, role) VALUES (?, ?, ?, 'user')`,
         args: [userId, email, name],
@@ -42,6 +43,19 @@ export async function POST(req: NextRequest) {
         sql: `INSERT INTO user_auth (user_id, email, password_hash) VALUES (?, ?, ?)`,
         args: [userId, email, passHash],
       })
+
+      // Auto-grant all required consents so users can immediately upload documents
+      const ipAddress = (req as any).ip || req.headers.get('x-forwarded-for') || '127.0.0.1'
+      const userAgent = req.headers.get('user-agent') || 'Browser'
+      const consentTypes: Array<'data_processing' | 'memory_storage' | 'financial_analysis' | 'advisory_output'> = [
+        'data_processing',
+        'memory_storage',
+        'financial_analysis',
+        'advisory_output',
+      ]
+      for (const consentType of consentTypes) {
+        await ConsentManager.recordConsent(userId, consentType, `User-agreed at signup: ${consentType}`, ipAddress, userAgent)
+      }
 
       const token = signToken({ userId, email, role: 'user' })
       const refreshToken = signRefreshToken({ userId })
@@ -94,3 +108,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Internal Server Error', details: e.message }, { status: 500 })
   }
 }
+

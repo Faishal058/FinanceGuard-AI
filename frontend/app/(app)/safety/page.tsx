@@ -13,49 +13,38 @@ import { CircularProgress } from '@/components/ui/progress'
 import { pageVariants, containerVariants, itemVariants } from '@/lib/animations'
 import { Shield, ShieldCheck, AlertTriangle, Eye, Lock, FileCheck, RefreshCw, CheckCircle2 } from 'lucide-react'
 
-const guardrails = [
-  { name: 'Input Safety', description: 'Validates all user inputs against harmful content patterns', score: 99, status: 'active', checks: 1247, blocked: 3 },
-  { name: 'Output Safety', description: 'Ensures AI responses contain no harmful or biased content', score: 97, status: 'active', checks: 1247, blocked: 8 },
-  { name: 'PII Detection', description: 'Identifies and redacts personally identifiable information', score: 98, status: 'active', checks: 1247, blocked: 12 },
-  { name: 'Bias Detection', description: 'Monitors for discriminatory patterns in AI recommendations', score: 95, status: 'active', checks: 1247, blocked: 0 },
-  { name: 'Hallucination Guard', description: 'Cross-validates AI outputs against retrieved source documents', score: 91, status: 'active', checks: 1247, blocked: 24 },
-  { name: 'GDPR Compliance', description: 'Ensures data handling meets GDPR and CCPA requirements', score: 100, status: 'active', checks: 1247, blocked: 0 },
-]
-
-const auditLog = [
-  { time: '14:32:11', event: 'Input validated', agent: 'Advisor', result: 'pass', detail: 'No harmful content detected' },
-  { time: '14:31:58', event: 'PII detected and redacted', agent: 'Memory', result: 'warn', detail: 'Email address removed from context' },
-  { time: '14:30:44', event: 'Output safety check', agent: 'Forecaster', result: 'pass', detail: 'Response within safety bounds' },
-  { time: '14:29:12', event: 'Hallucination check', agent: 'Advisor', result: 'pass', detail: 'Claims verified against 3 sources' },
-  { time: '14:28:35', event: 'Input blocked', agent: 'Risk Analyzer', result: 'block', detail: 'Request contained unsafe financial query' },
-]
-
 const resultConfig = {
   pass: { badge: 'success' as const, icon: CheckCircle2, color: 'text-success' },
   warn: { badge: 'warning' as const, icon: AlertTriangle, color: 'text-warning' },
   block: { badge: 'danger' as const, icon: Shield, color: 'text-destructive' },
 }
 
-const overallScore = Math.round(guardrails.reduce((a, g) => a + g.score, 0) / guardrails.length)
-
 export default function SafetyPage() {
   const [loading, setLoading] = useState(true)
   const [hasDocs, setHasDocs] = useState(false)
+  const [safetyData, setSafetyData] = useState<any>(null)
+
+  const fetchSafety = async () => {
+    try {
+      setLoading(true)
+      const res = await ApiClient.get('/api/v2/safety')
+      if (res && res.hasData) {
+        setHasDocs(true)
+        setSafetyData(res)
+      } else {
+        setHasDocs(false)
+        setSafetyData(null)
+      }
+    } catch (e) {
+      console.error(e)
+      setHasDocs(false)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function checkDocs() {
-      try {
-        const res = await ApiClient.get('/api/v2/dashboard')
-        if (res && res.metrics && res.metrics.documentCount > 0) {
-          setHasDocs(true)
-        }
-      } catch (e) {
-        console.error(e)
-      } finally {
-        setLoading(false)
-      }
-    }
-    checkDocs()
+    fetchSafety()
   }, [])
 
   if (loading) {
@@ -66,7 +55,7 @@ export default function SafetyPage() {
     )
   }
 
-  if (!hasDocs) {
+  if (!hasDocs || !safetyData) {
     return (
       <motion.div
         className="space-y-8 p-6 md:p-8 max-w-[1400px] mx-auto"
@@ -76,7 +65,7 @@ export default function SafetyPage() {
       >
         <PageHeader
           title="AI Safety"
-          description="Enkrypt AI guardrails monitoring — real-time safety, compliance, and bias detection for all AI outputs"
+          description="Compliance audit trails and real-time validation layers"
         />
         <EmptyState
           preset="alerts"
@@ -92,6 +81,8 @@ export default function SafetyPage() {
     )
   }
 
+  const { overallScore, stats, guardrails, auditLog } = safetyData
+
   return (
     <motion.div
       className="space-y-8 p-6 md:p-8 max-w-[1400px] mx-auto"
@@ -103,7 +94,7 @@ export default function SafetyPage() {
         title="AI Safety"
         description="Enkrypt AI guardrails monitoring — real-time safety, compliance, and bias detection for all AI outputs"
         actions={
-          <Button variant="outline" size="sm" leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
+          <Button variant="outline" size="sm" onClick={fetchSafety} leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
             Refresh
           </Button>
         }
@@ -129,9 +120,9 @@ export default function SafetyPage() {
         <motion.div variants={itemVariants} className="lg:col-span-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 h-full">
             {[
-              { icon: ShieldCheck, label: 'Total Checks', value: '1,247', sub: 'Today', color: 'text-success' },
-              { icon: AlertTriangle, label: 'Warnings', value: '47', sub: '3.8% of total', color: 'text-warning' },
-              { icon: Lock, label: 'Blocked', value: '3', sub: '0.2% of total', color: 'text-destructive' },
+              { icon: ShieldCheck, label: 'Total Checks', value: stats.totalChecks.toString(), sub: 'Today', color: 'text-success' },
+              { icon: AlertTriangle, label: 'Warnings / Redacts', value: stats.warnings.toString(), sub: 'Compliance logs', color: 'text-warning' },
+              { icon: Lock, label: 'Blocked requests', value: stats.blocked.toString(), sub: 'Safety blocks', color: 'text-destructive' },
             ].map((s, i) => (
               <GlassCard key={i} padding="md" className="flex flex-col justify-center gap-3">
                 <div className="flex items-center gap-3">
@@ -160,7 +151,7 @@ export default function SafetyPage() {
             action={<Badge variant="success" size="sm" dot pulse>All Active</Badge>}
           />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {guardrails.map(g => (
+            {guardrails.map((g: any) => (
               <div key={g.name} className="rounded-xl bg-surface-2 p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -173,7 +164,7 @@ export default function SafetyPage() {
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{g.checks.toLocaleString()} checks</span>
                   {g.blocked > 0 && (
-                    <span className="text-warning">{g.blocked} blocked</span>
+                    <span className="text-warning">{g.blocked} flagged</span>
                   )}
                   {g.blocked === 0 && (
                     <span className="text-success">0 issues</span>
@@ -195,7 +186,7 @@ export default function SafetyPage() {
             </Button>
           </div>
           <div className="space-y-2">
-            {auditLog.map((log, i) => {
+            {auditLog.map((log: any, i: number) => {
               const cfg = resultConfig[log.result as keyof typeof resultConfig]
               const Icon = cfg.icon
               return (

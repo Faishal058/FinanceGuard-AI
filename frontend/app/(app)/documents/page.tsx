@@ -16,8 +16,45 @@ import type { Document } from '@/lib/types'
 import { ApiClient } from '@/lib/api-client'
 import {
   Upload, FileText, File, Table2, CheckCircle2, Loader2,
-  AlertCircle, Trash2, Eye, Download, Search, Filter, Plus,
+  AlertCircle, Trash2, Eye, Download, Search, Plus, X, CheckCircle,
 } from 'lucide-react'
+
+/* ─────────────────────────────────────────────────────────
+   TOAST NOTIFICATION
+───────────────────────────────────────────────────────── */
+function Toast({ message, type, onClose }: {
+  message: string
+  type: 'success' | 'error'
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 5000)
+    return () => clearTimeout(t)
+  }, [onClose])
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 12, scale: 0.96 }}
+      className={cn(
+        'fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 shadow-2xl max-w-sm',
+        type === 'success'
+          ? 'bg-success/10 border-success/25 text-success'
+          : 'bg-destructive/10 border-destructive/25 text-destructive'
+      )}
+    >
+      {type === 'success'
+        ? <CheckCircle className="h-5 w-5 shrink-0" />
+        : <AlertCircle className="h-5 w-5 shrink-0" />
+      }
+      <p className="text-sm font-medium flex-1">{message}</p>
+      <button onClick={onClose} className="shrink-0 opacity-60 hover:opacity-100 transition-opacity">
+        <X className="h-4 w-4" />
+      </button>
+    </motion.div>
+  )
+}
 
 /* ─────────────────────────────────────────────────────────
    FILE ICON
@@ -30,7 +67,6 @@ function FileTypeIcon({ type }: { type: Document['type'] }) {
     other: { Icon: File, color: 'text-muted-foreground', bg: 'bg-surface-3' },
   }
   const { Icon, color, bg } = map[type] ?? map.other
-
   return (
     <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center shrink-0', bg)}>
       <Icon className={cn('h-5 w-5', color)} strokeWidth={1.7} />
@@ -41,25 +77,38 @@ function FileTypeIcon({ type }: { type: Document['type'] }) {
 /* ─────────────────────────────────────────────────────────
    DRAG & DROP ZONE
 ───────────────────────────────────────────────────────── */
-function DropZone({ onFileSelect }: { onFileSelect: () => void }) {
+function DropZone({
+  onFilesDropped, onBrowseClick, uploading,
+}: {
+  onFilesDropped: (files: FileList) => void
+  onBrowseClick: () => void
+  uploading: boolean
+}) {
   const [dragOver, setDragOver] = useState(false)
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      onFilesDropped(e.dataTransfer.files)
+    }
+  }
 
   return (
     <motion.div
       variants={itemVariants}
       onDragOver={e => { e.preventDefault(); setDragOver(true) }}
       onDragLeave={() => setDragOver(false)}
-      onDrop={e => { e.preventDefault(); setDragOver(false) }}
-      onClick={onFileSelect}
+      onDrop={handleDrop}
+      onClick={uploading ? undefined : onBrowseClick}
       className={cn(
-        'relative rounded-2xl border-2 border-dashed p-12 text-center cursor-pointer',
-        'transition-all duration-200 group',
+        'relative rounded-2xl border-2 border-dashed p-12 text-center transition-all duration-200 group',
+        uploading ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
         dragOver
           ? 'border-primary bg-primary/5 scale-[1.01]'
           : 'border-border hover:border-primary/40 hover:bg-surface-2/50'
       )}
     >
-      {/* Background glow */}
       <div className={cn(
         'absolute inset-0 rounded-2xl transition-opacity duration-300',
         'bg-gradient-to-br from-primary/5 to-secondary/5',
@@ -67,21 +116,48 @@ function DropZone({ onFileSelect }: { onFileSelect: () => void }) {
       )} />
 
       <div className="relative">
-        <div className="mx-auto mb-4 h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-          <Upload className="h-8 w-8 text-primary" strokeWidth={1.5} />
+        <div className={cn(
+          'mx-auto mb-4 h-16 w-16 rounded-2xl flex items-center justify-center transition-colors',
+          uploading ? 'bg-primary/20' : 'bg-primary/10'
+        )}>
+          {uploading
+            ? <Loader2 className="h-8 w-8 text-primary animate-spin" strokeWidth={1.5} />
+            : <Upload className="h-8 w-8 text-primary" strokeWidth={1.5} />
+          }
         </div>
         <h3 className="text-lg font-semibold text-foreground mb-2">
-          {dragOver ? 'Drop files here' : 'Upload Financial Documents'}
+          {uploading
+            ? 'Processing your document…'
+            : dragOver ? 'Drop files here' : 'Upload Financial Documents'
+          }
         </h3>
         <p className="text-sm text-muted-foreground mb-4">
-          Drag and drop, or click to browse
+          {uploading
+            ? 'AI agents are parsing and indexing your file. This may take up to a minute.'
+            : 'Drag and drop, or click to browse'
+          }
         </p>
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {['PDF', 'CSV', 'Excel', 'Word'].map(ext => (
-            <Badge key={ext} variant="outline" size="sm">{ext}</Badge>
-          ))}
-        </div>
-        <p className="text-xs text-tertiary mt-3">Max file size: 50MB</p>
+        {!uploading && (
+          <>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {['PDF', 'CSV', 'Excel', 'Word'].map(ext => (
+                <Badge key={ext} variant="outline" size="sm">{ext}</Badge>
+              ))}
+            </div>
+            <p className="text-xs text-tertiary mt-3">Max file size: 50MB</p>
+          </>
+        )}
+        {uploading && (
+          <div className="flex items-center justify-center gap-2 mt-3">
+            <div className="h-1.5 w-48 bg-surface-3 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-primary rounded-full"
+                animate={{ width: ['5%', '85%'] }}
+                transition={{ duration: 50, ease: 'easeOut' }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </motion.div>
   )
@@ -111,7 +187,7 @@ function DocumentRow({ doc, onDelete }: { doc: Document; onDelete: (id: string) 
           {doc.chunks && (
             <>
               <span className="text-xs text-tertiary">•</span>
-              <span className="text-xs text-muted-foreground">{doc.chunks} chunks</span>
+              <span className="text-xs text-muted-foreground">{doc.chunks} chunks indexed</span>
             </>
           )}
         </div>
@@ -120,14 +196,12 @@ function DocumentRow({ doc, onDelete }: { doc: Document; onDelete: (id: string) 
         )}
       </div>
 
-      {/* Status icon */}
       <div className="shrink-0">
         {doc.status === 'completed' && <CheckCircle2 className="h-5 w-5 text-success" />}
         {doc.status === 'processing' && <Loader2 className="h-5 w-5 text-primary animate-spin" />}
         {doc.status === 'failed' && <AlertCircle className="h-5 w-5 text-destructive" />}
       </div>
 
-      {/* Actions (visible on hover) */}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-smooth">
         <Button variant="ghost" size="icon-sm" title="Preview">
           <Eye className="h-3.5 w-3.5" />
@@ -157,6 +231,7 @@ export default function DocumentsPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | Document['status']>('all')
   const [uploading, setUploading] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadDocuments = useCallback(async () => {
@@ -169,38 +244,45 @@ export default function DocumentsPage() {
     }
   }, [])
 
-  useEffect(() => {
-    loadDocuments()
-  }, [loadDocuments])
+  useEffect(() => { loadDocuments() }, [loadDocuments])
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click()
-  }
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
+  const uploadFile = async (file: File) => {
+    if (uploading) return
     setUploading(true)
     try {
       await ApiClient.uploadFile('/api/v2/documents', file)
       await loadDocuments()
+      setToast({ message: `"${file.name}" uploaded and indexed successfully!`, type: 'success' })
     } catch (e) {
-      console.error('Failed to upload file', e)
-      alert(e instanceof Error ? e.message : 'Upload failed')
+      const msg = e instanceof Error ? e.message : 'Upload failed. Please try again.'
+      setToast({ message: msg, type: 'error' })
     } finally {
       setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  const handleBrowseClick = () => { if (!uploading) fileInputRef.current?.click() }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await uploadFile(file)
+  }
+
+  const handleFilesDropped = async (files: FileList) => {
+    const file = files[0]
+    if (file) await uploadFile(file)
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this document? All associated analyses will be purged.')) return
-
     try {
-      await ApiClient.delete(`/api/v2/documents`, { id })
+      await ApiClient.delete('/api/v2/documents', { id })
       await loadDocuments()
-    } catch (e) {
-      console.error('Failed to delete document', e)
+      setToast({ message: 'Document deleted successfully.', type: 'success' })
+    } catch {
+      setToast({ message: 'Failed to delete document.', type: 'error' })
     }
   }
 
@@ -232,6 +314,12 @@ export default function DocumentsPage() {
         accept=".pdf,.csv,.xlsx,.xls,.doc,.docx"
       />
 
+      <AnimatePresence>
+        {toast && (
+          <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
+        )}
+      </AnimatePresence>
+
       <PageHeader
         title="Documents"
         description="Upload and manage your financial documents for AI analysis"
@@ -239,12 +327,15 @@ export default function DocumentsPage() {
           <Button
             variant="gradient"
             size="sm"
-            leftIcon={uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            leftIcon={uploading
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Plus className="h-3.5 w-3.5" />
+            }
             glow
-            onClick={handleUploadClick}
+            onClick={handleBrowseClick}
             disabled={uploading}
           >
-            {uploading ? 'Processing...' : 'Upload'}
+            {uploading ? 'Processing…' : 'Upload'}
           </Button>
         }
       />
@@ -255,7 +346,7 @@ export default function DocumentsPage() {
           { label: 'Total Files', value: stats.total },
           { label: 'Processed', value: stats.completed, color: 'text-success' },
           { label: 'Processing', value: stats.processing, color: 'text-primary' },
-          { label: 'Total Chunks', value: stats.totalChunks },
+          { label: 'Vector Chunks', value: stats.totalChunks },
         ].map((s, i) => (
           <motion.div key={i} variants={itemVariants}>
             <GlassCard padding="md" className="text-center">
@@ -266,15 +357,19 @@ export default function DocumentsPage() {
         ))}
       </motion.div>
 
-      {/* Drop Zone */}
-      <DropZone onFileSelect={handleUploadClick} />
+      <DropZone
+        onFilesDropped={handleFilesDropped}
+        onBrowseClick={handleBrowseClick}
+        uploading={uploading}
+      />
 
-      {/* Document List */}
       <GlassCard>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-          <SectionHeader title="Your Documents" description={`${filtered.length} file${filtered.length !== 1 ? 's' : ''}`} />
+          <SectionHeader
+            title="Your Documents"
+            description={`${filtered.length} file${filtered.length !== 1 ? 's' : ''}`}
+          />
           <div className="flex items-center gap-2">
-            {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               <input
@@ -285,7 +380,6 @@ export default function DocumentsPage() {
                 className="h-8 rounded-xl border border-border bg-surface-2 pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-smooth w-44"
               />
             </div>
-            {/* Filter */}
             <select
               value={filter}
               onChange={e => setFilter(e.target.value as any)}
@@ -301,7 +395,7 @@ export default function DocumentsPage() {
 
         <div className="space-y-2">
           {filtered.length === 0 ? (
-            <EmptyState preset="documents" size="sm" action={{ label: 'Upload File', onClick: handleUploadClick }} />
+            <EmptyState preset="documents" size="sm" action={{ label: 'Upload File', onClick: handleBrowseClick }} />
           ) : (
             filtered.map(doc => <DocumentRow key={doc.id} doc={doc} onDelete={handleDelete} />)
           )}
@@ -310,4 +404,3 @@ export default function DocumentsPage() {
     </motion.div>
   )
 }
-

@@ -1,6 +1,6 @@
 import Redis from 'ioredis'
 import { Workflow } from './workflow'
-import { runProfileBuilderAgent } from './agents/profile-builder'
+import { getDbClient, initDb } from './db'
 import { runRiskAgent } from './agents/risk'
 import { runForecastAgent } from './agents/forecast'
 import { runAdvisorAgent } from './agents/advisor'
@@ -61,7 +61,7 @@ export async function publishWorkflowTask(taskId: string, payload: any): Promise
     'payload',
     JSON.stringify(payload)
   )
-  return messageId
+  return messageId || ''
 }
 
 /**
@@ -95,34 +95,114 @@ export async function runWorkflowWorker(): Promise<void> {
           const payload = JSON.parse(payloadString)
           const { userId, sessionId, query, traceId } = payload
 
-          // 1. Re-build and run the workflow steps
+          await initDb()
+          const db = getDbClient()
+
+          // Fetch uploads counts
+          const docRes = await db.execute({
+            sql: `SELECT id FROM documents_metadata WHERE user_id = ? AND status = 'completed'`,
+            args: [userId],
+          })
+
+          // Read real stored profile metrics from DB
+          const storedProfileRes = await db.execute({
+            sql: `SELECT * FROM user_profiles WHERE user_id = ?`,
+            args: [userId],
+          })
+          const storedProfile = storedProfileRes.rows[0] as any
+
+          const hasRealData = docRes.rows.length > 0 &&
+            storedProfile &&
+            typeof storedProfile.monthly_gross === 'number' &&
+            (storedProfile.monthly_gross as number) > 0
+
+          const grossIncome  = hasRealData ? (storedProfile.monthly_gross as number) : 0
+          const totalExpenses = hasRealData ? (storedProfile.monthly_burn as number) : 0
+          const dti          = hasRealData ? (storedProfile.debt_to_income_ratio as number) : 0
+          const netWorth     = hasRealData ? (storedProfile.net_worth as number) : 0
+          const riskTolerance = (storedProfile?.risk_tolerance_score as number) || 5
+          const savingsRate  = grossIncome > 0 ? parseFloat(((grossIncome - totalExpenses) / grossIncome * 100).toFixed(1)) : 0
+          const monthlyDebt  = grossIncome > 0 ? parseFloat((dti * grossIncome).toFixed(2)) : 0
+
+          const now = new Date()
+          const monthAgo = new Date(now)
+          monthAgo.setMonth(monthAgo.getMonth() - 1)
+          const dataPeriod = {
+            start: monthAgo.toISOString().split('T')[0],
+            end: now.toISOString().split('T')[0],
+          }
+
           const workflow = new Workflow('financial-advisory-pipeline', '2.0.0')
 
-          let profileResult: any = null
+          let profileResult: any = {
+            user_id: userId,
+            profile_date: new Date().toISOString(),
+            profile_updated: false,
+            update_reason: hasRealData ? 'Profile loaded from stored ingest metrics' : 'No documents uploaded',
+            income: {
+              monthly_gross: grossIncome,
+              sources: [{ source: hasRealData ? 'Uploaded Statement' : 'No data', amount: grossIncome }],
+            },
+            expenses: {
+              monthly_total: totalExpenses,
+              breakdown: {
+                HOUSING: 0, UTILITIES: 0, FOOD: 0, TRANSPORT: 0,
+                HEALTHCARE: 0, ENTERTAINMENT: 0,
+                DEBT_PAYMENT: monthlyDebt,
+                SAVINGS: Math.max(0, grossIncome - totalExpenses),
+                TRANSFER: 0, OTHER: 0,
+              },
+            },
+            ratios: {
+              debt_to_income: dti,
+              savings_rate: savingsRate,
+              emergency_fund_ratio: 0,
+              net_worth: netWorth,
+            },
+            monthly_burn_rate: totalExpenses,
+            risk_tolerance_score: riskTolerance,
+            confidence_score: hasRealData ? 0.92 : 0.40,
+            stale: !hasRealData,
+            calculation_notes: hasRealData
+              ? `Real data: Income $${grossIncome}/mo, Expenses $${totalExpenses}/mo`
+              : 'No documents uploaded',
+            metadata: {
+              data_period: dataPeriod,
+              transaction_count: docRes.rows.length,
+              prompt_version: '1.8.0',
+              model_version: 'stored-profile-v1',
+            },
+          }
+
           workflow.addStep({
             id: 'profile',
-            handler: async () => {
-              profileResult = await runProfileBuilderAgent(userId, sessionId)
-              return profileResult
-            },
+            handler: async () => profileResult,
           })
 
           let riskResult: any = null
-          workflow.addStep({
-            id: 'risk',
-            handler: async () => {
-              riskResult = await runRiskAgent(userId, sessionId, profileResult)
-              return riskResult
-            },
-          })
-
           let forecastResult: any = null
           workflow.addStep({
-            id: 'forecast',
-            handler: async () => {
-              forecastResult = await runForecastAgent(userId, sessionId, profileResult)
-              return forecastResult
-            },
+            id: 'parallel_analysis',
+            parallelSteps: [
+              {
+                id: 'risk',
+                handler: async () => {
+                  riskResult = await runRiskAgent(userId, profileResult)
+                  return riskResult
+                },
+              },
+              {
+                id: 'forecast',
+                handler: async () => {
+                  forecastResult = await runForecastAgent(userId, profileResult, 12)
+                  return forecastResult
+                },
+              },
+            ],
+          })
+
+          workflow.addStep({
+            id: 'human_approval',
           })
 
           let advisorResult: any = null

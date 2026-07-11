@@ -19,12 +19,12 @@ export async function comparePassword(password: string, hash: string): Promise<b
   return bcrypt.compare(password, hash)
 }
 
-export function signToken(payload: UserTokenPayload, expiresIn = '15m'): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn })
+export function signToken(payload: UserTokenPayload, expiresIn = '7d'): string {
+  return jwt.sign(payload as any, JWT_SECRET, { expiresIn } as any)
 }
 
 export function signRefreshToken(payload: { userId: string }, expiresIn = '7d'): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn })
+  return jwt.sign(payload as any, JWT_SECRET, { expiresIn } as any)
 }
 
 export function verifyToken(token: string): UserTokenPayload | null {

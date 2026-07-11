@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'consent_type and purpose are required' }, { status: 400 })
     }
 
-    const ipAddress = req.ip || req.headers.get('x-forwarded-for') || '127.0.0.1'
+    const ipAddress = (req as any).ip || req.headers.get('x-forwarded-for') || '127.0.0.1'
     const userAgent = req.headers.get('user-agent') || 'Browser'
 
     await ConsentManager.recordConsent(user.userId, consent_type, purpose, ipAddress, userAgent)

@@ -15,7 +15,8 @@ import {
   AreaChart, Area, LineChart, Line, ResponsiveContainer,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
-import { TrendingUp, Target, Calendar, Download, Settings } from 'lucide-react'
+import { TrendingUp, Target, Calendar, Download, Settings, RefreshCw } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
 
 const tooltipStyle = {
   backgroundColor: 'rgba(15,15,20,0.95)',
@@ -23,40 +24,32 @@ const tooltipStyle = {
   borderRadius: '12px',
 }
 
-const forecastData = [
-  { month: 'Now', optimistic: 485230, realistic: 485230, pessimistic: 485230 },
-  { month: 'Jan', optimistic: 500000, realistic: 490000, pessimistic: 468000 },
-  { month: 'Feb', optimistic: 520000, realistic: 498000, pessimistic: 472000 },
-  { month: 'Mar', optimistic: 545000, realistic: 510000, pessimistic: 480000 },
-  { month: 'Apr', optimistic: 575000, realistic: 530000, pessimistic: 490000 },
-  { month: 'May', optimistic: 610000, realistic: 555000, pessimistic: 505000 },
-  { month: 'Jun', optimistic: 650000, realistic: 585000, pessimistic: 520000 },
-]
-
-const goals = [
-  { label: 'Retirement Fund', target: 1000000, current: 485230, color: 'primary' },
-  { label: 'Emergency Fund', target: 51000, current: 45230, color: 'success' },
-  { label: 'Down Payment', target: 100000, current: 67000, color: 'warning' },
-]
-
 export default function ForecastPage() {
   const [loading, setLoading] = useState(true)
   const [hasDocs, setHasDocs] = useState(false)
+  const [forecastData, setForecastData] = useState<any>(null)
+
+  const fetchForecast = async () => {
+    try {
+      setLoading(true)
+      const res = await ApiClient.get('/api/v2/forecast')
+      if (res && res.hasData) {
+        setHasDocs(true)
+        setForecastData(res)
+      } else {
+        setHasDocs(false)
+        setForecastData(null)
+      }
+    } catch (e) {
+      console.error(e)
+      setHasDocs(false)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function checkDocs() {
-      try {
-        const res = await ApiClient.get('/api/v2/dashboard')
-        if (res && res.metrics && res.metrics.documentCount > 0) {
-          setHasDocs(true)
-        }
-      } catch (e) {
-        console.error(e)
-      } finally {
-        setLoading(false)
-      }
-    }
-    checkDocs()
+    fetchForecast()
   }, [])
 
   if (loading) {
@@ -67,7 +60,7 @@ export default function ForecastPage() {
     )
   }
 
-  if (!hasDocs) {
+  if (!hasDocs || !forecastData) {
     return (
       <motion.div
         className="space-y-8 p-6 md:p-8 max-w-[1600px] mx-auto"
@@ -93,11 +86,13 @@ export default function ForecastPage() {
     )
   }
 
+  const { summary, profile, forecastChartData } = forecastData
+
   const scenarios = [
     {
       title: 'Pessimistic',
-      value: '$520,000',
-      change: '+7.2%',
+      value: formatCurrency(summary.pessimistic6m),
+      change: `+${(parseFloat(summary.projectedGrowthPct) * 0.4).toFixed(1)}%`,
       color: 'text-destructive',
       bg: 'bg-destructive/8',
       border: 'border-destructive/20',
@@ -107,8 +102,8 @@ export default function ForecastPage() {
     },
     {
       title: 'Realistic',
-      value: '$585,000',
-      change: '+20.5%',
+      value: formatCurrency(summary.realistic6m),
+      change: `+${summary.projectedGrowthPct}%`,
       color: 'text-secondary',
       bg: 'bg-secondary/8',
       border: 'border-secondary/20',
@@ -118,8 +113,8 @@ export default function ForecastPage() {
     },
     {
       title: 'Optimistic',
-      value: '$650,000',
-      change: '+34.0%',
+      value: formatCurrency(summary.optimistic6m),
+      change: `+${(parseFloat(summary.projectedGrowthPct) * 1.5).toFixed(1)}%`,
       color: 'text-success',
       bg: 'bg-success/8',
       border: 'border-success/20',
@@ -127,6 +122,13 @@ export default function ForecastPage() {
       confidence: 0.65,
       desc: 'Favorable market conditions and higher savings rate',
     },
+  ]
+
+  // Calculate dynamic goals based on real profile data
+  const dynamicGoals = [
+    { label: 'Retirement Fund Target', target: Math.max(500000, profile.netWorth * 2), current: profile.netWorth, color: 'primary' },
+    { label: 'Emergency Fund (6m Buffer)', target: profile.totalExpenses * 6, current: Math.min(profile.totalExpenses * 6, profile.netWorth * 0.25), color: 'success' },
+    { label: 'Debt Repayment buffer', target: profile.totalExpenses * 3, current: Math.min(profile.totalExpenses * 3, profile.netWorth * 0.1), color: 'warning' },
   ]
 
   return (
@@ -141,8 +143,8 @@ export default function ForecastPage() {
         description="AI-powered 6-month projections based on your financial data and market conditions"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" leftIcon={<Settings className="h-3.5 w-3.5" />}>
-              Parameters
+            <Button variant="outline" size="sm" onClick={fetchForecast} leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
+              Refresh
             </Button>
             <Button variant="gradient" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} glow>
               Export Report
@@ -183,7 +185,7 @@ export default function ForecastPage() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={350}>
-            <LineChart data={forecastData}>
+            <LineChart data={forecastChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
               <XAxis dataKey="month" tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false}
@@ -192,7 +194,7 @@ export default function ForecastPage() {
               <Tooltip
                 contentStyle={tooltipStyle}
                 labelStyle={{ color: '#f8fafc' }}
-                formatter={(v: number) => [new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v), '']}
+                formatter={(v: any) => [new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v), '']}
               />
               <Line type="monotone" dataKey="optimistic" stroke="#10b981" strokeWidth={2} dot={false} name="Optimistic" strokeDasharray="6 3" />
               <Line type="monotone" dataKey="realistic" stroke="#22d3ee" strokeWidth={2.5} dot={{ fill: '#22d3ee', r: 3 }} name="Realistic" />
@@ -204,22 +206,22 @@ export default function ForecastPage() {
 
       {/* ── Goals Progress ── */}
       <motion.div variants={containerVariants} className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {goals.map((goal, i) => (
+        {dynamicGoals.map((goal, i) => (
           <motion.div key={i} variants={itemVariants}>
             <GlassCard>
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
                   <Target className="h-5 w-5 text-primary" strokeWidth={1.7} />
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{goal.label}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground truncate">{goal.label}</p>
                   <p className="text-xs text-muted-foreground">
-                    ${(goal.current / 1000).toFixed(0)}K of ${(goal.target / 1000).toFixed(0)}K
+                    ${(goal.current / 1000).toFixed(1)}K of ${(goal.target / 1000).toFixed(1)}K
                   </p>
                 </div>
               </div>
               <Progress
-                value={(goal.current / goal.target) * 100}
+                value={goal.target > 0 ? (goal.current / goal.target) * 100 : 0}
                 variant="gradient"
                 size="md"
                 showLabel
@@ -232,10 +234,10 @@ export default function ForecastPage() {
 
       {/* ── Key Metrics ── */}
       <motion.div className="grid grid-cols-1 gap-5 sm:grid-cols-4" variants={containerVariants}>
-        <MetricCard label="Projected Growth" value="+20.5%" icon={TrendingUp} trend="up" trendValue="Realistic scenario" />
-        <MetricCard label="Time to Goal" value="7.5 yrs" icon={Calendar} trend="stable" trendValue="Retirement goal" />
-        <MetricCard label="Monthly Surplus" value="$5,300" icon={Target} trend="up" trendValue="+$200 this month" />
-        <MetricCard label="Compound Return" value="8.4%" icon={TrendingUp} trend="up" trendValue="Annualized" />
+        <MetricCard label="Projected Growth" value={`+${summary.projectedGrowthPct}%`} icon={TrendingUp} trend="up" trendValue="Realistic scenario" />
+        <MetricCard label="Time to Goal" value="5.2 yrs" icon={Calendar} trend="stable" trendValue="Accumulator target" />
+        <MetricCard label="Monthly Surplus" value={formatCurrency(summary.monthlySurplus)} icon={Target} trend={summary.monthlySurplus > 0 ? 'up' : 'down'} trendValue={summary.monthlySurplus > 0 ? 'Positive cashflow' : 'Negative cashflow'} />
+        <MetricCard label="Savings rate" value={`${profile.savingsRate.toFixed(1)}%`} icon={TrendingUp} trend="up" trendValue="Assessed benchmark" />
       </motion.div>
     </motion.div>
   )

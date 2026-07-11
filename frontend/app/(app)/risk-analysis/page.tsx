@@ -28,30 +28,6 @@ const tooltipStyle = {
   borderRadius: '12px',
 }
 
-const riskMetrics = [
-  { category: 'Volatility', value: 45 },
-  { category: 'Concentration', value: 62 },
-  { category: 'Liquidity', value: 38 },
-  { category: 'Credit', value: 28 },
-  { category: 'Interest Rate', value: 35 },
-  { category: 'Operational', value: 22 },
-]
-
-const riskBreakdown = [
-  { risk: 'Low Risk', count: 35, fill: '#10b981' },
-  { risk: 'Medium Risk', count: 45, fill: '#f59e0b' },
-  { risk: 'High Risk', count: 20, fill: '#f43f5e' },
-]
-
-const heatmapItems = [
-  { title: 'Market Risk', score: 45, level: 'medium' },
-  { title: 'Credit Risk', score: 28, level: 'low' },
-  { title: 'Liquidity Risk', score: 38, level: 'medium' },
-  { title: 'Operational Risk', score: 22, level: 'low' },
-  { title: 'Concentration Risk', score: 62, level: 'high' },
-  { title: 'Regulatory Risk', score: 18, level: 'low' },
-]
-
 const levelConfig = {
   low: { badge: 'success' as const, bar: 'success', label: 'Low' },
   medium: { badge: 'warning' as const, bar: 'warning', label: 'Medium' },
@@ -61,21 +37,29 @@ const levelConfig = {
 export default function RiskAnalysisPage() {
   const [loading, setLoading] = useState(true)
   const [hasDocs, setHasDocs] = useState(false)
+  const [riskData, setRiskData] = useState<any>(null)
+
+  const fetchRiskData = async () => {
+    try {
+      setLoading(true)
+      const res = await ApiClient.get('/api/v2/risk')
+      if (res && res.hasData) {
+        setHasDocs(true)
+        setRiskData(res)
+      } else {
+        setHasDocs(false)
+        setRiskData(null)
+      }
+    } catch (e) {
+      console.error('Failed to fetch risk data', e)
+      setHasDocs(false)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function checkDocs() {
-      try {
-        const res = await ApiClient.get('/api/v2/dashboard')
-        if (res && res.metrics && res.metrics.documentCount > 0) {
-          setHasDocs(true)
-        }
-      } catch (e) {
-        console.error(e)
-      } finally {
-        setLoading(false)
-      }
-    }
-    checkDocs()
+    fetchRiskData()
   }, [])
 
   if (loading) {
@@ -86,7 +70,7 @@ export default function RiskAnalysisPage() {
     )
   }
 
-  if (!hasDocs) {
+  if (!hasDocs || !riskData) {
     return (
       <motion.div
         className="space-y-8 p-6 md:p-8 max-w-[1600px] mx-auto"
@@ -112,6 +96,75 @@ export default function RiskAnalysisPage() {
     )
   }
 
+  const { profile, riskReport } = riskData
+  const score = riskReport?.overall_risk_score || 10
+
+  // 1. Calculate dynamic Radar chart metrics based on real profile values
+  const dtiVal = profile?.dti || 0
+  const savingsRate = profile?.savingsRate || 0
+  
+  const volatility = Math.min(100, Math.max(15, Math.round(score * 1.1)))
+  const concentration = 40 + Math.round((profile?.riskTolerance || 5) * 6)
+  const liquidity = Math.min(100, Math.max(10, Math.round(100 - savingsRate)))
+  const credit = Math.min(100, Math.round(dtiVal * 120))
+  const interestRate = 35
+  const operational = Math.min(100, Math.max(10, Math.round(score * 0.5)))
+
+  const dynamicRiskMetrics = [
+    { category: 'Volatility', value: volatility },
+    { category: 'Concentration', value: concentration },
+    { category: 'Liquidity', value: liquidity },
+    { category: 'Credit', value: credit },
+    { category: 'Interest Rate', value: interestRate },
+    { category: 'Operational', value: operational },
+  ]
+
+  // 2. Calculate dynamic Risk Distribution
+  const highRiskAllocation = Math.min(60, Math.round(dtiVal * 100))
+  const lowRiskAllocation = Math.min(80, Math.max(10, Math.round(savingsRate * 1.5)))
+  const medRiskAllocation = Math.max(10, 100 - highRiskAllocation - lowRiskAllocation)
+
+  const dynamicRiskBreakdown = [
+    { risk: 'Low Risk', count: lowRiskAllocation, fill: '#10b981' },
+    { risk: 'Medium Risk', count: medRiskAllocation, fill: '#f59e0b' },
+    { risk: 'High Risk', count: highRiskAllocation, fill: '#f43f5e' },
+  ]
+
+  // 3. Dynamic Heatmap categories
+  const dtiLevel = dtiVal > 0.43 ? 'high' : dtiVal >= 0.35 ? 'medium' : 'low'
+  const savingsLevel = savingsRate < 10 ? 'high' : savingsRate < 20 ? 'medium' : 'low'
+  const overallLevel = score > 60 ? 'high' : score > 30 ? 'medium' : 'low'
+
+  const dynamicHeatmapItems = [
+    { title: 'Debt burden (DTI)', score: Math.min(100, Math.round(dtiVal * 100)), level: dtiLevel },
+    { title: 'Liquidity drain', score: Math.min(100, Math.max(0, Math.round(100 - savingsRate))), level: savingsLevel },
+    { title: 'Overall risk score', score: score, level: overallLevel },
+  ]
+
+  // 4. Transform riskReport.risk_flags into AI Recommendation cards
+  const recommendations = (riskReport?.risk_flags || []).map((flag: any) => {
+    let priority = 'low'
+    if (flag.severity === 'CRITICAL' || flag.severity === 'HIGH') priority = 'high'
+    else if (flag.severity === 'MEDIUM') priority = 'medium'
+
+    return {
+      title: flag.flag_type.replace(/_/g, ' '),
+      desc: flag.description,
+      confidence: riskReport?.confidence_score || 0.92,
+      priority,
+    }
+  })
+
+  // Fallback recommendations if list is empty
+  if (recommendations.length === 0) {
+    recommendations.push({
+      title: 'Healthy Risk Profile',
+      desc: 'All analyzed risk indices (DTI, Savings rate, liquidity ratio) are currently within acceptable limits.',
+      confidence: 0.95,
+      priority: 'low',
+    })
+  }
+
   return (
     <motion.div
       className="space-y-8 p-6 md:p-8 max-w-[1600px] mx-auto"
@@ -124,7 +177,7 @@ export default function RiskAnalysisPage() {
         description="Comprehensive AI-powered portfolio risk assessment and monitoring"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
+            <Button variant="outline" size="sm" onClick={fetchRiskData} leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
               Refresh
             </Button>
             <Button variant="gradient" size="sm" leftIcon={<Download className="h-3.5 w-3.5" />} glow>
@@ -136,14 +189,38 @@ export default function RiskAnalysisPage() {
 
       {/* ── Key Metrics ── */}
       <motion.div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4" variants={containerVariants}>
-        <MetricCard label="Overall Risk Score" value="42" subvalue="/ 100"
-          icon={AlertTriangle} trend="up" trendValue="+3 pts this week" trendPositiveIsUp={false} />
-        <MetricCard label="Portfolio Beta" value="0.92"
-          icon={Activity} trend="stable" trendValue="Neutral" />
-        <MetricCard label="Value at Risk (95%)" value="$23,450"
-          icon={TrendingDown} trend="down" trendValue="-2% from last month" trendPositiveIsUp={false} />
-        <MetricCard label="Sharpe Ratio" value="1.28"
-          icon={Shield} trend="up" trendValue="+0.1 improvement" />
+        <MetricCard
+          label="Overall Risk Score"
+          value={score.toString()}
+          subvalue="/ 100"
+          icon={AlertTriangle}
+          trend={score > 50 ? 'up' : 'stable'}
+          trendValue={score > 50 ? 'Elevated exposure' : 'Moderate'}
+          trendPositiveIsUp={false}
+        />
+        <MetricCard
+          label="Debt-to-Income"
+          value={`${(dtiVal * 100).toFixed(1)}%`}
+          icon={Activity}
+          trend={dtiVal > 0.35 ? 'up' : 'down'}
+          trendValue={dtiVal > 0.35 ? 'Critical range' : 'Healthy ratio'}
+          trendPositiveIsUp={false}
+        />
+        <MetricCard
+          label="Savings Rate"
+          value={`${savingsRate.toFixed(1)}%`}
+          icon={TrendingDown}
+          trend={savingsRate > 20 ? 'up' : 'down'}
+          trendValue={savingsRate > 20 ? 'Target achieved' : 'Action suggested'}
+        />
+        <MetricCard
+          label="Risk Tolerance"
+          value={(profile?.riskTolerance || 5).toString()}
+          subvalue="/ 10"
+          icon={Shield}
+          trend="stable"
+          trendValue="Assessed configuration"
+        />
       </motion.div>
 
       {/* ── Charts Row ── */}
@@ -153,7 +230,7 @@ export default function RiskAnalysisPage() {
           <GlassCard>
             <SectionHeader title="Risk Profile Radar" description="Multi-dimensional risk assessment" className="mb-5" />
             <ResponsiveContainer width="100%" height={300}>
-              <RadarChart data={riskMetrics}>
+              <RadarChart data={dynamicRiskMetrics}>
                 <PolarGrid stroke="rgba(255,255,255,0.06)" />
                 <PolarAngleAxis
                   dataKey="category"
@@ -175,17 +252,17 @@ export default function RiskAnalysisPage() {
           <GlassCard>
             <SectionHeader title="Risk Distribution" description="Asset allocation by risk level" className="mb-5" />
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={riskBreakdown} barSize={40}>
+              <BarChart data={dynamicRiskBreakdown} barSize={40}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
                 <XAxis dataKey="risk" tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false}
                   tickFormatter={v => `${v}%`}
                 />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#f8fafc' }}
-                  formatter={(v: number) => [`${v}%`, 'Allocation']}
+                  formatter={(v: any) => [`${v}%`, 'Allocation']}
                 />
                 <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                  {riskBreakdown.map((entry, i) => (
+                  {dynamicRiskBreakdown.map((entry, i) => (
                     <Cell key={i} fill={entry.fill} />
                   ))}
                 </Bar>
@@ -213,7 +290,7 @@ export default function RiskAnalysisPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {heatmapItems.map(item => {
+            {dynamicHeatmapItems.map(item => {
               const cfg = levelConfig[item.level as keyof typeof levelConfig]
               return (
                 <div
@@ -249,15 +326,11 @@ export default function RiskAnalysisPage() {
         <GlassCard variant="gradient">
           <SectionHeader
             title="AI Risk Recommendations"
-            description="Powered by FinanceGuard AI agents"
+            description="Powered by autonomous risk auditor agents"
             className="mb-5"
           />
           <div className="space-y-3">
-            {[
-              { title: 'Reduce Concentration Risk', desc: 'Your top 3 holdings represent 62% of your portfolio. Consider diversifying.', confidence: 0.92, priority: 'high' },
-              { title: 'Add Defensive Assets', desc: 'Market volatility is elevated. Adding 5-10% to bonds may reduce overall risk.', confidence: 0.85, priority: 'medium' },
-              { title: 'Review Interest Rate Exposure', desc: 'Rising rates could impact your fixed income holdings by up to 3.5%.', confidence: 0.78, priority: 'low' },
-            ].map((rec, i) => (
+            {recommendations.map((rec: any, i: number) => (
               <div key={i} className="rounded-xl bg-surface-2/60 p-4 space-y-2">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">

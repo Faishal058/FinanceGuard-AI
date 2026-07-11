@@ -42,7 +42,9 @@ function Progress({
   className,
   ...props
 }: ProgressProps) {
-  const percentage = Math.min(100, Math.max(0, (value / max) * 100))
+  const safeValue = typeof value === 'number' && !isNaN(value) ? value : 0
+  const safeMax = typeof max === 'number' && !isNaN(max) && max > 0 ? max : 100
+  const percentage = Math.min(100, Math.max(0, (safeValue / safeMax) * 100))
 
   return (
     <div className={cn('w-full', className)} {...props}>
@@ -101,7 +103,8 @@ function CircularProgress({
 }: CircularProgressProps) {
   const radius = (size - strokeWidth) / 2
   const circumference = radius * 2 * Math.PI
-  const strokeDashoffset = circumference - (value / 100) * circumference
+  const safeValue = typeof value === 'number' && !isNaN(value) ? Math.min(100, Math.max(0, value)) : 0
+  const strokeDashoffset = circumference - (safeValue / 100) * circumference
 
   return (
     <div className="relative inline-flex items-center justify-center">

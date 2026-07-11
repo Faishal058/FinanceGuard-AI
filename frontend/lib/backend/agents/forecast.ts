@@ -71,13 +71,19 @@ export async function runForecastAgent(
   profile: ProfileResult,
   dataMonthsAvailable: number
 ): Promise<ForecastResult> {
-  const currentSavings = profile.ratios.net_worth !== null ? Math.max(5000, profile.ratios.net_worth) : 170230.00
-  const monthlyGross = profile.income.monthly_gross || 8500.00
-  const monthlyExpenses = profile.expenses.monthly_total || 3200.00
-  const totalDebt = 89000.00 // Reference mock mortgage/loans
+  const currentSavings = profile.ratios.net_worth !== null && profile.ratios.net_worth > 0
+    ? profile.ratios.net_worth
+    : Math.max(0, (profile.income.monthly_gross - profile.expenses.monthly_total) * 6)
+  const monthlyGross = profile.income.monthly_gross || 0
+  const monthlyExpenses = profile.expenses.monthly_total || 0
+  // BUG-01 FIX: derive totalDebt from real profile DTI ratio, not hardcoded $89,000
+  const totalDebt = monthlyGross > 0 && profile.ratios.debt_to_income !== null
+    ? parseFloat((profile.ratios.debt_to_income * monthlyGross * 12).toFixed(2))
+    : 0
 
   const horizons = [6, 12, 24, 60]
-  const numSimulations = 10000
+  // BUG-08 FIX: 1,000 simulations is statistically sufficient and 10x faster
+  const numSimulations = 1000
 
   const incomeMean = 0.03
   const incomeStd = 0.02

@@ -5,49 +5,10 @@ import { motion } from 'framer-motion'
 import { ApiClient } from '@/lib/api-client'
 import { EmptyState } from '@/components/common/empty-state'
 import { GlassCard } from '@/components/common/glass-card'
-import { PageHeader, SectionHeader } from '@/components/common/page-header'
-import { StatusBadge } from '@/components/common/status-badge'
-import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/common/page-header'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import { pageVariants, containerVariants, itemVariants } from '@/lib/animations'
-import { cn } from '@/lib/utils'
-import { Workflow, CheckCircle2, XCircle, Clock, Play, Plus, RotateCcw } from 'lucide-react'
-
-const workflows = [
-  {
-    id: 'wf-1', name: 'Full Portfolio Analysis', status: 'completed', duration: '2m 14s',
-    lastRun: '5 min ago', traceId: 'tr_abc123',
-    steps: [
-      { name: 'Document Ingestion', status: 'completed', duration: '12s' },
-      { name: 'Qdrant Embedding', status: 'completed', duration: '8s' },
-      { name: 'Risk Analysis Agent', status: 'completed', duration: '45s' },
-      { name: 'Portfolio Optimization', status: 'completed', duration: '62s' },
-      { name: 'Report Generation', status: 'completed', duration: '7s' },
-    ],
-  },
-  {
-    id: 'wf-2', name: 'Tax Document Processing', status: 'running', duration: '1m 32s',
-    lastRun: 'Now', traceId: 'tr_def456',
-    steps: [
-      { name: 'PDF Extraction', status: 'completed', duration: '5s' },
-      { name: 'Entity Recognition', status: 'completed', duration: '18s' },
-      { name: 'Tax Calculation Agent', status: 'running', duration: '—' },
-      { name: 'Compliance Check', status: 'pending', duration: '—' },
-      { name: 'Summary Generation', status: 'pending', duration: '—' },
-    ],
-  },
-  {
-    id: 'wf-3', name: 'Market Risk Assessment', status: 'failed', duration: '0m 48s',
-    lastRun: '2 hours ago', traceId: 'tr_ghi789',
-    steps: [
-      { name: 'Market Data Fetch', status: 'completed', duration: '3s' },
-      { name: 'Volatility Analysis', status: 'completed', duration: '22s' },
-      { name: 'Risk Model Agent', status: 'failed', duration: '23s' },
-      { name: 'Alert Generation', status: 'pending', duration: '—' },
-    ],
-  },
-]
+import { Workflow, CheckCircle2, XCircle, Clock, RotateCcw } from 'lucide-react'
 
 const stepStatusIcon = (status: string) => {
   if (status === 'completed') return <CheckCircle2 className="h-4 w-4 text-success" />
@@ -56,25 +17,38 @@ const stepStatusIcon = (status: string) => {
   return <div className="h-4 w-4 rounded-full border-2 border-border" />
 }
 
+const statusColor = (status: string) => {
+  if (status === 'completed') return 'text-success bg-success/10'
+  if (status === 'failed') return 'text-destructive bg-destructive/10'
+  if (status === 'running') return 'text-primary bg-primary/10'
+  return 'text-muted-foreground bg-muted/10'
+}
+
 export default function WorkflowsPage() {
   const [loading, setLoading] = useState(true)
   const [hasDocs, setHasDocs] = useState(false)
+  const [workflows, setWorkflows] = useState<any[]>([])
+  const [stats, setStats] = useState({ total: 0, completed: 0, running: 0, failed: 0 })
 
-  useEffect(() => {
-    async function checkDocs() {
-      try {
-        const res = await ApiClient.get('/api/v2/dashboard')
-        if (res && res.metrics && res.metrics.documentCount > 0) {
-          setHasDocs(true)
-        }
-      } catch (e) {
-        console.error(e)
-      } finally {
-        setLoading(false)
+  async function loadData() {
+    try {
+      const [dashRes, wfRes] = await Promise.all([
+        ApiClient.get('/api/v2/dashboard'),
+        ApiClient.get('/api/v2/workflows').catch(() => null),
+      ])
+      if (dashRes?.metrics?.documentCount > 0) setHasDocs(true)
+      if (wfRes?.workflows) {
+        setWorkflows(wfRes.workflows)
+        setStats(wfRes.stats)
       }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
     }
-    checkDocs()
-  }, [])
+  }
+
+  useEffect(() => { loadData() }, [])
 
   if (loading) {
     return (
@@ -88,9 +62,7 @@ export default function WorkflowsPage() {
     return (
       <motion.div
         className="space-y-8 p-6 md:p-8 max-w-[1400px] mx-auto"
-        variants={pageVariants}
-        initial="hidden"
-        animate="visible"
+        variants={pageVariants} initial="hidden" animate="visible"
       >
         <PageHeader
           title="Workflows"
@@ -99,140 +71,124 @@ export default function WorkflowsPage() {
         <EmptyState
           preset="agents"
           title="No Active Workflows"
-          description="Please upload your bank statement or CSV files in the Documents page to trigger the Mastra agent execution workflows."
-          action={{
-            label: "Go to Documents",
-            onClick: () => window.location.href = "/documents",
-            variant: "gradient"
-          }}
+          description="Upload your bank statement or CSV files in the Documents page to trigger the Mastra agent execution workflows."
+          action={{ label: 'Go to Documents', onClick: () => window.location.href = '/documents', variant: 'gradient' }}
         />
       </motion.div>
     )
   }
-  const total = workflows.length
-  const completed = workflows.filter(w => w.status === 'completed').length
-  const running = workflows.filter(w => w.status === 'running').length
-  const failed = workflows.filter(w => w.status === 'failed').length
+
+  if (hasDocs && workflows.length === 0) {
+    return (
+      <motion.div
+        className="space-y-8 p-6 md:p-8 max-w-[1400px] mx-auto"
+        variants={pageVariants} initial="hidden" animate="visible"
+      >
+        <PageHeader
+          title="Workflows"
+          description="Multi-step AI orchestration pipelines powered by Mastra with full OpenTelemetry tracing"
+          actions={
+            <Button variant="outline" size="sm" leftIcon={<RotateCcw className="h-3.5 w-3.5" />} onClick={loadData}>
+              Refresh
+            </Button>
+          }
+        />
+        <EmptyState
+          preset="agents"
+          title="No Workflows Run Yet"
+          description="Ask a question in the AI Workspace to trigger the financial advisory pipeline and see it logged here."
+          action={{ label: 'Go to Workspace', onClick: () => window.location.href = '/workspace', variant: 'gradient' }}
+        />
+      </motion.div>
+    )
+  }
 
   return (
     <motion.div
       className="space-y-8 p-6 md:p-8 max-w-[1400px] mx-auto"
-      variants={pageVariants}
-      initial="hidden"
-      animate="visible"
+      variants={pageVariants} initial="hidden" animate="visible"
     >
       <PageHeader
         title="Workflows"
         description="Multi-step AI orchestration pipelines powered by Mastra with full OpenTelemetry tracing"
         actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" leftIcon={<RotateCcw className="h-3.5 w-3.5" />}>
-              Retry Failed
-            </Button>
-            <Button variant="gradient" size="sm" leftIcon={<Plus className="h-3.5 w-3.5" />} glow>
-              New Workflow
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" leftIcon={<RotateCcw className="h-3.5 w-3.5" />} onClick={loadData}>
+            Refresh
+          </Button>
         }
       />
 
       {/* Stats */}
-      <motion.div className="grid grid-cols-2 sm:grid-cols-4 gap-4" variants={containerVariants}>
+      <motion.div className="grid grid-cols-2 gap-4 sm:grid-cols-4" variants={containerVariants}>
         {[
-          { label: 'Total Workflows', value: total, color: 'text-foreground' },
-          { label: 'Completed', value: completed, color: 'text-success' },
-          { label: 'Running', value: running, color: 'text-primary' },
-          { label: 'Failed', value: failed, color: 'text-destructive' },
-        ].map((s, i) => (
-          <motion.div key={i} variants={itemVariants}>
+          { label: 'Total Workflows', value: stats.total },
+          { label: 'Completed', value: stats.completed },
+          { label: 'Running', value: stats.running },
+          { label: 'Failed', value: stats.failed },
+        ].map(s => (
+          <motion.div key={s.label} variants={itemVariants}>
             <GlassCard padding="md" className="text-center">
-              <p className={`text-3xl font-bold tabular-nums ${s.color}`}>{s.value}</p>
+              <p className="text-3xl font-bold text-foreground tabular-nums">{s.value}</p>
               <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
             </GlassCard>
           </motion.div>
         ))}
       </motion.div>
 
-      {/* Workflow Cards */}
-      <div className="space-y-5">
+      {/* Workflow List */}
+      <motion.div className="space-y-4" variants={containerVariants}>
         {workflows.map(wf => (
           <motion.div key={wf.id} variants={itemVariants}>
-            <GlassCard>
-              {/* Header */}
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Workflow className="h-5 w-5 text-primary" strokeWidth={1.7} />
+            <GlassCard padding="md">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 rounded-lg bg-primary/10 p-2">
+                    <Workflow className="h-4 w-4 text-primary" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-foreground">{wf.name}</h3>
-                      <StatusBadge status={wf.status} size="sm" />
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" /> {wf.duration}
+                      <h3 className="text-sm font-semibold text-foreground">{wf.name}</h3>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${statusColor(wf.status)}`}>
+                        {wf.status}
                       </span>
-                      <span className="text-xs text-tertiary">•</span>
-                      <span className="text-xs text-muted-foreground">{wf.lastRun}</span>
-                      <span className="text-xs text-tertiary">•</span>
-                      <span className="text-xs font-mono text-muted-foreground">{wf.traceId}</span>
                     </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {wf.duration} · {wf.lastRun}
+                      {wf.traceId && <span className="ml-2 font-mono opacity-60">· {wf.traceId}</span>}
+                    </p>
+                    {wf.errorMessage && (
+                      <p className="text-xs text-destructive mt-1 font-mono">Error: {wf.errorMessage}</p>
+                    )}
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="xs">View Trace</Button>
-                  {wf.status === 'failed' && (
-                    <Button variant="outline" size="xs" leftIcon={<RotateCcw className="h-3 w-3" />}>
-                      Retry
-                    </Button>
-                  )}
-                  {wf.status !== 'running' && (
-                    <Button variant="ghost" size="icon-sm">
-                      <Play className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
                 </div>
               </div>
 
               {/* Steps */}
-              <div className="space-y-2.5">
-                {wf.steps.map((step, i) => (
+              <div className="mt-4 space-y-2">
+                {wf.steps.map((step: any, i: number) => (
                   <div key={i} className="flex items-center gap-3">
-                    <div className="shrink-0">{stepStatusIcon(step.status)}</div>
-                    <div className="flex-1 flex items-center gap-2">
-                      <p className={cn(
-                        'text-sm',
-                        step.status === 'completed' ? 'text-foreground' :
-                        step.status === 'running' ? 'text-primary font-medium' :
-                        step.status === 'failed' ? 'text-destructive' :
-                        'text-muted-foreground'
-                      )}>{step.name}</p>
-                      {step.status === 'running' && (
-                        <Badge variant="primary" size="sm" dot pulse>Running</Badge>
-                      )}
-                    </div>
-                    {step.duration !== '—' && (
-                      <span className="text-xs text-muted-foreground font-mono shrink-0">{step.duration}</span>
+                    {stepStatusIcon(step.status)}
+                    <span className="flex-1 text-sm text-foreground">{step.name}</span>
+                    {step.status !== 'pending' && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {step.duration}
+                      </span>
                     )}
                   </div>
                 ))}
               </div>
 
-              {/* Progress bar */}
+              {/* Progress bar for running workflows */}
               {wf.status === 'running' && (
-                <Progress
-                  value={(wf.steps.filter(s => s.status === 'completed').length / wf.steps.length) * 100}
-                  variant="gradient"
-                  size="xs"
-                  animated
-                  className="mt-4"
-                />
+                <div className="mt-4 h-1.5 w-full rounded-full bg-border overflow-hidden">
+                  <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: '60%' }} />
+                </div>
               )}
             </GlassCard>
           </motion.div>
         ))}
-      </div>
+      </motion.div>
     </motion.div>
   )
 }

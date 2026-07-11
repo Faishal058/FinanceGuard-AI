@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { pageVariants, itemVariants, containerVariants, thinkingDotVariants } from '@/lib/animations'
 import { cn } from '@/lib/utils'
-import { mockDocuments, mockAgents } from '@/lib/mock-data'
 import { ApiClient } from '@/lib/api-client'
 import {
   Send, Paperclip, Settings, Sparkles, Brain, FileText,
@@ -31,7 +30,7 @@ interface Message {
 const INITIAL_MESSAGE: Message = {
   id: '0',
   role: 'assistant',
-  content: `Hello! I'm your **FinanceGuard AI** assistant powered by Mastra and Qdrant RAG. I can:\n\n• Analyze your financial documents and portfolio\n• Provide risk assessments and forecasts\n• Answer questions about your investments\n• Retrieve insights from your uploaded documents\n\nHow can I assist you today?`,
+  content: `Hello! I'm your **AI Financial Advisor** powered by Mastra and Qdrant RAG. I can:\n\n• Analyze your financial documents and portfolio\n• Provide risk assessments and forecasts\n• Answer questions about your investments\n• Retrieve insights from your uploaded documents\n\nHow can I assist you today?`,
   timestamp: new Date(Date.now() - 300000),
   confidence: 0.97,
   agentUsed: 'Financial Advisor',
@@ -209,15 +208,27 @@ export default function WorkspacePage() {
     }, 450)
 
     try {
-      const res = await ApiClient.post('/api/v2/query', {
-        query: promptText,
-        session_id: sessionIdRef.current,
-      })
+      // Add a 30-second timeout to prevent indefinite spinner
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+      let res: any
+      try {
+        res = await ApiClient.post('/api/v2/query', {
+          query: promptText,
+          session_id: sessionIdRef.current,
+        })
+      } finally {
+        clearTimeout(timeoutId)
+      }
 
       clearInterval(cycleInterval)
       setActiveStep(-1)
 
-      const advisor = res.data.advisory
+      const advisor = res?.data?.advisory || res?.advisory
+      if (!advisor) {
+        throw new Error(res?.error || 'The advisor returned an empty response. Please try again.')
+      }
       
       // Structure advisor synthesis response beautifully for display
       let formattedContent = `${advisor.executive_summary}\n\n`
@@ -309,7 +320,7 @@ export default function WorkspacePage() {
                   <Sparkles className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-foreground">FinanceGuard AI</p>
+                  <p className="text-sm font-semibold text-foreground">AI Financial Advisor</p>
                   <div className="flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-success" />
                     <span className="text-xs text-muted-foreground">Online — Mastra + Qdrant</span>

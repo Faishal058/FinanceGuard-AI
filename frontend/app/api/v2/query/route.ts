@@ -3,7 +3,6 @@ import { getDbClient, initDb } from '@/lib/backend/db'
 import { authenticateUser } from '@/lib/backend/auth'
 import { ConsentManager } from '@/lib/backend/governance'
 import { EnkryptClient } from '@/lib/backend/enkrypt'
-import { runProfileBuilderAgent } from '@/lib/backend/agents/profile-builder'
 import { runRiskAgent } from '@/lib/backend/agents/risk'
 import { runForecastAgent } from '@/lib/backend/agents/forecast'
 import { runAdvisorAgent } from '@/lib/backend/agents/advisor'
@@ -64,51 +63,94 @@ export async function POST(req: NextRequest) {
     // Query sanitized query if PII was redacted
     const sanitizedQuery = inputGuardResult.redactedText || query
 
-    // 3. Ingestion fetch from relational DB
+    // 3. Fetch real financial data from DB (stored during CSV ingest)
     const db = getDbClient()
     const docRes = await db.execute({
       sql: `SELECT id FROM documents_metadata WHERE user_id = ? AND status = 'completed'`,
       args: [user.userId],
     })
 
-    // If user has no transactions, we load default transactions to construct profile
-    let transactions: any[] = []
-    
-    // Simulate pulling actual transactions from database (we can generate some transactions if empty)
-    if (docRes.rows.length === 0) {
-      transactions = [
-        { date: '2025-06-01', amount: 8500.00, category: 'INCOME', merchant: 'Employers Inc', description: 'Salary deposit', flagged: false, flag_reason: null },
-        { date: '2025-06-03', amount: -1450.00, category: 'HOUSING', merchant: 'Wells Fargo', description: 'Mortgage payment', flagged: false, flag_reason: null },
-        { date: '2025-06-05', amount: -180.00, category: 'UTILITIES', merchant: 'Duke Energy', description: 'Electric statement', flagged: false, flag_reason: null },
-        { date: '2025-06-07', amount: -520.00, category: 'FOOD', merchant: 'Whole Foods', description: 'Groceries', flagged: false, flag_reason: null },
-        { date: '2025-06-10', amount: -350.00, category: 'TRANSPORT', merchant: 'Shell Gas', description: 'Fuel fillup', flagged: false, flag_reason: null },
-        { date: '2025-06-12', amount: -800.00, category: 'DEBT_PAYMENT', merchant: 'Credit Card', description: 'Card statement payment', flagged: false, flag_reason: null },
-        { date: '2025-06-15', amount: -200.00, category: 'ENTERTAINMENT', merchant: 'Netflix', description: 'Sub fee', flagged: false, flag_reason: null },
-      ]
-    } else {
-      // Use parsed transactions if available
-      transactions = [
-        { date: '2025-06-01', amount: 8500.00, category: 'INCOME', merchant: 'Employers Inc', description: 'Salary deposit', flagged: false, flag_reason: null },
-        { date: '2025-06-03', amount: -1450.00, category: 'HOUSING', merchant: 'Wells Fargo', description: 'Mortgage payment', flagged: false, flag_reason: null },
-        { date: '2025-06-05', amount: -180.00, category: 'UTILITIES', merchant: 'Duke Energy', description: 'Electric statement', flagged: false, flag_reason: null },
-        { date: '2025-06-07', amount: -520.00, category: 'FOOD', merchant: 'Whole Foods', description: 'Groceries', flagged: false, flag_reason: null },
-        { date: '2025-06-10', amount: -350.00, category: 'TRANSPORT', merchant: 'Shell Gas', description: 'Fuel fillup', flagged: false, flag_reason: null },
-        { date: '2025-06-12', amount: -800.00, category: 'DEBT_PAYMENT', merchant: 'Credit Card', description: 'Card payment', flagged: false, flag_reason: null },
-      ]
-    }
+    // Read real stored profile metrics from DB (written by profile-builder during ingest)
+    const storedProfileRes = await db.execute({
+      sql: `SELECT * FROM user_profiles WHERE user_id = ?`,
+      args: [user.userId],
+    })
+    const storedProfile = storedProfileRes.rows[0] as any
 
-    const start = '2025-06-01'
-    const end = '2025-06-30'
+    const hasRealData = docRes.rows.length > 0 &&
+      storedProfile &&
+      typeof storedProfile.monthly_gross === 'number' &&
+      (storedProfile.monthly_gross as number) > 0
+
+    // Build real ProfileResult from stored DB metrics — no re-parsing needed
+    const grossIncome  = hasRealData ? (storedProfile.monthly_gross as number) : 0
+    const totalExpenses = hasRealData ? (storedProfile.monthly_burn as number) : 0
+    const dti          = hasRealData ? (storedProfile.debt_to_income_ratio as number) : 0
+    const netWorth     = hasRealData ? (storedProfile.net_worth as number) : 0
+    const riskTolerance = (storedProfile?.risk_tolerance_score as number) || 5
+    const savingsRate  = grossIncome > 0
+      ? parseFloat(((grossIncome - totalExpenses) / grossIncome * 100).toFixed(1))
+      : 0
+    const monthlyDebt  = grossIncome > 0 ? parseFloat((dti * grossIncome).toFixed(2)) : 0
+
+    const now = new Date()
+    const monthAgo = new Date(now)
+    monthAgo.setMonth(monthAgo.getMonth() - 1)
+    const dataPeriod = {
+      start: monthAgo.toISOString().split('T')[0],
+      end: now.toISOString().split('T')[0],
+    }
 
     // 4. Instantiate and Execute Mastra Orchestrator Workflow
     const workflow = new Workflow('financial-advisory-pipeline', '2.0.0')
 
-    // Step A: Profile builder
+    // Step A: Build real ProfileResult directly from stored data
     let profileResult: any = null
     workflow.addStep({
       id: 'profile',
       handler: async () => {
-        profileResult = await runProfileBuilderAgent(user.userId, transactions, { start, end })
+        // Use real stored metrics instead of fake hardcoded transactions
+        profileResult = {
+          user_id: user.userId,
+          profile_date: new Date().toISOString(),
+          profile_updated: false,
+          update_reason: hasRealData
+            ? 'Profile loaded from stored ingest metrics'
+            : 'No documents uploaded — using zero defaults',
+          income: {
+            monthly_gross: grossIncome,
+            sources: [{ source: hasRealData ? 'Uploaded Statement' : 'No data', amount: grossIncome }],
+          },
+          expenses: {
+            monthly_total: totalExpenses,
+            breakdown: {
+              HOUSING: 0, UTILITIES: 0, FOOD: 0, TRANSPORT: 0,
+              HEALTHCARE: 0, ENTERTAINMENT: 0,
+              DEBT_PAYMENT: monthlyDebt,
+              SAVINGS: Math.max(0, grossIncome - totalExpenses),
+              TRANSFER: 0, OTHER: 0,
+            },
+          },
+          ratios: {
+            debt_to_income: dti,
+            savings_rate: savingsRate,
+            emergency_fund_ratio: 0,
+            net_worth: netWorth,
+          },
+          monthly_burn_rate: totalExpenses,
+          risk_tolerance_score: riskTolerance,
+          confidence_score: hasRealData ? 0.92 : 0.40,
+          stale: !hasRealData,
+          calculation_notes: hasRealData
+            ? `Real data: Income $${grossIncome.toLocaleString()}/mo, Expenses $${totalExpenses.toLocaleString()}/mo, DTI ${(dti * 100).toFixed(1)}%, Savings Rate ${savingsRate}%`
+            : 'No financial documents uploaded. Please upload a bank statement to get personalized advice.',
+          metadata: {
+            data_period: dataPeriod,
+            transaction_count: docRes.rows.length,
+            prompt_version: '1.8.0',
+            model_version: 'stored-profile-v1',
+          },
+        }
         return profileResult
       },
     })
@@ -163,66 +205,114 @@ export async function POST(req: NextRequest) {
     let finalResponse: any = null
     let usedRedis = false
 
-    try {
-      const redis = getRedisClient()
-      const pubsub = getRedisSubClient()
-      const taskId = 'task_' + Math.random().toString(36).substr(2, 9)
+    // BUG-09 FIX: Only attempt Redis if it is actually configured. Skip the 6-second timeout waste.
+    const hasRedisConfig = !!(process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL)
 
-      // Check if Redis connection is working
-      await redis.ping()
-      usedRedis = true
+    if (hasRedisConfig) {
+      try {
+        const redis = getRedisClient()
+        const pubsub = getRedisSubClient()
+        const taskId = 'task_' + Math.random().toString(36).substr(2, 9)
 
-      const completionPromise = new Promise<any>((resolve, reject) => {
-        const channel = `workflow_complete:${taskId}`
-        
-        const onMessage = async (chan: string, msg: string) => {
-          if (chan === channel) {
-            try {
-              const resString = await redis.get(`workflow_result:${taskId}`)
-              if (resString) {
-                const parsed = JSON.parse(resString)
-                resolve(parsed)
-              } else {
-                reject(new Error('Result not found in Redis'))
+        await redis.ping()
+        usedRedis = true
+
+        const completionPromise = new Promise<any>((resolve, reject) => {
+          const channel = `workflow_complete:${taskId}`
+
+          const onMessage = async (chan: string, msg: string) => {
+            if (chan === channel) {
+              try {
+                const resString = await redis.get(`workflow_result:${taskId}`)
+                if (resString) {
+                  const parsed = JSON.parse(resString)
+                  resolve(parsed)
+                } else {
+                  reject(new Error('Result not found in Redis'))
+                }
+              } catch (e) {
+                reject(e)
+              } finally {
+                pubsub.unsubscribe(channel).catch(console.error)
+                pubsub.off('message', onMessage)
               }
-            } catch (e) {
-              reject(e)
-            } finally {
-              pubsub.unsubscribe(channel).catch(console.error)
-              pubsub.off('message', onMessage)
             }
           }
-        }
 
-        pubsub.subscribe(channel).then(() => {
-          pubsub.on('message', onMessage)
-          
-          publishWorkflowTask(taskId, {
-            userId: user.userId,
-            sessionId,
-            query: sanitizedQuery,
-            traceId,
+          pubsub.subscribe(channel).then(() => {
+            pubsub.on('message', onMessage)
+            publishWorkflowTask(taskId, {
+              userId: user.userId,
+              sessionId,
+              query: sanitizedQuery,
+              traceId,
+            }).catch(reject)
           }).catch(reject)
-        }).catch(reject)
-      })
+        })
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Redis workflow worker timeout')), 6000)
-      )
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Redis workflow worker timeout')), 6000)
+        )
 
-      finalResponse = await Promise.race([completionPromise, timeoutPromise])
-      latencyMs = Date.now() - startTime
-      
-      await redis.del(`workflow_result:${taskId}`)
-    } catch (redisErr) {
-      console.warn('Redis Streams workflow execution failed or timed out. Falling back to inline execution.', redisErr)
-      usedRedis = false
+        finalResponse = await Promise.race([completionPromise, timeoutPromise])
+        latencyMs = Date.now() - startTime
+
+        await redis.del(`workflow_result:${taskId}`)
+      } catch (redisErr) {
+        console.warn('Redis workflow failed or timed out. Falling back to inline.', redisErr)
+        usedRedis = false
+      }
     }
 
     if (!usedRedis) {
+      // Write workflow execution start record
+      const execId = 'wf_' + Math.random().toString(36).substr(2, 9)
+      const db = getDbClient()
+      try {
+        await db.execute({
+          sql: `INSERT INTO workflow_executions (id, user_id, session_id, name, status, trace_id, started_at)
+                VALUES (?, ?, ?, ?, 'running', ?, CURRENT_TIMESTAMP)`,
+          args: [execId, user.userId, sessionId, 'Financial Advisory Pipeline', traceId],
+        })
+        // Log individual steps as pending
+        for (const stepName of ['Profile Builder', 'Risk Agent', 'Forecast Agent', 'Advisor Agent']) {
+          await db.execute({
+            sql: `INSERT INTO workflow_steps (id, execution_id, step_name, status, started_at)
+                  VALUES (?, ?, ?, 'pending', CURRENT_TIMESTAMP)`,
+            args: ['step_' + Math.random().toString(36).substr(2, 9), execId, stepName],
+          })
+        }
+      } catch (dbErr) {
+        console.warn('Failed to log workflow execution start', dbErr)
+      }
+
       // Trigger workflow execution inline
-      const workflowContext = await workflow.execute(sessionId, user.userId, { query: sanitizedQuery })
+      let workflowError: any = null
+      const workflowContext = await workflow.execute(sessionId, user.userId, { query: sanitizedQuery }).catch(e => {
+        workflowError = e
+        return null
+      })
       latencyMs = Date.now() - startTime
+
+      // Update execution record with final status
+      const wfStatus = workflowError ? 'failed' : (workflowContext?.status === 'PENDING_APPROVAL' ? 'pending_approval' : 'completed')
+      try {
+        await db.execute({
+          sql: `UPDATE workflow_executions SET status = ?, completed_at = CURRENT_TIMESTAMP, duration_ms = ?, error_message = ? WHERE id = ?`,
+          args: [wfStatus, latencyMs, workflowError?.message || null, execId],
+        })
+        await db.execute({
+          sql: `UPDATE workflow_steps SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE execution_id = ?`,
+          args: [wfStatus === 'failed' ? 'failed' : 'completed', execId],
+        })
+      } catch (dbErr) {
+        console.warn('Failed to update workflow execution record', dbErr)
+      }
+
+      if (workflowError) {
+        return NextResponse.json({ error: 'Workflow execution failed', code: 'WORKFLOW_FAILED' }, { status: 500 })
+      }
+
 
       // If paused at human approval gate
       if (workflowContext.status === 'PENDING_APPROVAL') {
@@ -235,10 +325,21 @@ export async function POST(req: NextRequest) {
       }
 
       // Evaluate Quality Gates on Advisor Output
+      // BUG-C FIX: advisorResult can be null if the advisory step failed all retries
+      if (!advisorResult) {
+        console.error('Advisory step failed all retries — returning structured error response')
+        return NextResponse.json({
+          error: 'The advisory agent encountered an internal error. Please try again or rephrase your query.',
+          code: 'ADVISOR_STEP_FAILED',
+          session_id: sessionId,
+          trace_id: traceId,
+        }, { status: 500 })
+      }
+
       const tokenCount = 1450
       const confidenceScore = advisorResult.confidence_score || 0.90
       
-      const isSafetyBlocked = advisorResult.advisory.executive_summary.includes('[SECURITY BLOCK]')
+      const isSafetyBlocked = advisorResult.advisory?.executive_summary?.includes('[SECURITY BLOCK]') || false
       const isJsonValid = !isSafetyBlocked
       
       const safetyObj = {

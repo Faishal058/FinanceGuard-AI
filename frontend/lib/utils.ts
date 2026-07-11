@@ -55,7 +55,7 @@ export function formatRelativeTime(date: Date | string): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`
-  return formatShortDate(d)
+  return formatShortDate(date)
 }
 
 export function clamp(value: number, min: number, max: number): number {
