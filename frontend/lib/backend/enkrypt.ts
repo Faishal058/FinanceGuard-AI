@@ -131,7 +131,7 @@ export class EnkryptClient {
 
   constructor() {
     this.apiKey = process.env.ENKRYPT_API_KEY
-    this.apiUrl = process.env.ENKRYPT_API_URL || 'https://api.enkryptai.com/v1/guardrails/validate'
+    this.apiUrl = process.env.ENKRYPT_API_URL || 'https://api.enkryptai.com/guardrails/detect'
   }
 
   async validateText(
@@ -171,26 +171,38 @@ export class EnkryptClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
+          'apikey': this.apiKey || '',
         },
         body: JSON.stringify({
           text,
-          detectors: ['hallucination', 'pii', 'financial_compliance', 'bias', 'toxicity', 'prompt_injection'],
-          context: {
-            user_id: context.user_id,
-            trace_id: context.trace_id,
-            agent_name: context.agent_name,
-            prompt_version: context.prompt_version,
-          },
+          detectors: {
+            nsfw: { enabled: true },
+            toxicity: { enabled: true },
+            pii: { enabled: true, entities: ['pii', 'secrets', 'ip_address', 'url'] },
+            injection_attack: { enabled: true },
+            bias: { enabled: true },
+            sponge_attack: { enabled: true }
+          }
         }),
       })
 
       const data = await response.json()
       
-      const piiScore = data.detectors?.pii?.score || 0.0
-      const hallucinationScore = data.detectors?.hallucination?.score || 0.0
-      const complianceScore = data.detectors?.financial_compliance?.score || 1.0
-      const allowed = data.allowed ?? true
+      const piiScore = data.summary?.pii ? 1.0 : 0.0
+      const injectionAttackScore = data.details?.injection_attack?.attack || 0.0
+      const toxicityScore = data.details?.toxicity?.toxicity || 0.0
+      const biasScore = data.details?.bias?.bias_detected ? 1.0 : 0.0
+      
+      let allowed = true
+      let reason = ''
+
+      if (data.summary?.injection_attack || injectionAttackScore > 0.5) {
+        allowed = false
+        reason = 'Prompt Injection attack detected'
+      } else if (data.summary?.toxicity?.length > 0 || toxicityScore > 0.5) {
+        allowed = false
+        reason = 'Toxic content detected'
+      }
       
       await db.execute({
         sql: `INSERT INTO safety_audit_logs (audit_id, trace_id, user_id, agent_name, pii_score, hallucination_score, compliance_status)
@@ -201,19 +213,19 @@ export class EnkryptClient {
           context.user_id,
           context.agent_name,
           piiScore,
-          hallucinationScore,
+          0.0,
           allowed ? 'ALLOWED' : 'BLOCKED',
         ],
       })
 
       return {
         allowed,
-        redactedText: data.redacted_text || text,
-        hallucinationScore,
-        complianceScore,
-        biasScore: data.detectors?.bias?.score || 0.0,
+        redactedText: data.details?.keyword_detector?.redacted_text || text,
+        hallucinationScore: 0.0,
+        complianceScore: 1.0,
+        biasScore,
         piiScore,
-        reason: data.reason || '',
+        reason,
       }
     } catch (e) {
       console.warn('Enkrypt AI request failed, using local safety backup', e)
