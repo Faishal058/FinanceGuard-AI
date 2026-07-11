@@ -8,7 +8,7 @@
 [![Featherless AI](https://img.shields.io/badge/Inference-Featherless%20AI-0284C7?style=for-the-badge)](#featherless-ai-integration)
 [![Enkrypt AI](https://img.shields.io/badge/Safety-Enkrypt%20AI-10B981?style=for-the-badge)](#enkrypt-ai-integration)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-
+[![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
 
 FinanceGuard AI is an advanced, production-grade financial orchestration system designed to parse unstructured financial documents, build unified financial profiles, run Monte Carlo simulations, flag potential risks, and deliver secure, compliance-vetted, real-time financial advisory.
 
@@ -122,6 +122,16 @@ FinanceGuard AI uses a decoupled orchestration model inspired by Mastra pipeline
 
 ---
 
+## 📡 Qdrant Integration & Semantic RAG
+
+FinanceGuard AI integrates with Qdrant vector storage to enable document chunk search and persistent cross-session memory:
+* **Unified Vector Storage:** Connects to cloud-hosted Qdrant vector databases using API keys. If the database connection drops or is unconfigured, it seamlessly switches to an embedded SQLite-based fallback table (`mock_vector_store`) to ensure complete offline operational resilience.
+* **Deterministic Vector Generation:** Employs a local character-hash-based distribution algorithm to convert text chunks (size 512, overlap 50) into normalized 3072-dimensional vector arrays. This guarantees zero-cost, high-speed, and offline-compatible semantic lookups without relying on external API calls.
+* **Granular Payload Isolation:** Uses payload-level filters (`user_id` and `document_id`) to execute context queries, ensuring that a user can never retrieve context chunks belonging to another user.
+* **Single-Pass Document Deletion:** Deletes document vector points in one operations by filtering the Qdrant database payload by `document_id`.
+
+---
+
 ## ☁️ Featherless AI Integration
 
 Featherless AI serves as the core LLM engine for document parsing and financial advice:
@@ -138,23 +148,6 @@ To operate safely under strict regulatory constraints, the platform runs all inp
 1. **PII Redaction:** Screens user prompts for sensitive data (SSNs, credit card numbers, account passwords) and redacts them before reaching Featherless AI.
 2. **Prompt Injection Protection:** Intercepts jailbreaks or prompt override attempts.
 3. **Compliance Output Filter:** Checks the Advisor's response text to ensure it does not contain specific investment advice or promote individual stock tickers (`AAPL`, `TSLA`, etc.), substituting them with structural disclaimer notices.
-
----
-
-## 🔗 Qdrant Integration between Mastra & Enkrypt AI
-
-FinanceGuard AI implements a multi-stage security pipeline linking **Mastra Workflows**, **Enkrypt AI**, and **Qdrant Vector Database**:
-
-1. **Vetted Ingestion (Mastra ➔ Enkrypt ➔ Qdrant)**:
-   * During document processing, Mastra chunks the source text.
-   * Before a chunk is embedded and written to Qdrant, it is sent to the Enkrypt AI endpoint to redact any sensitive PII.
-   * Only clean, anonymized texts are stored in the Qdrant database, ensuring compliance standards (CCPA/GDPR) are met at the vector level.
-2. **Safe Semantic Retrieval (Mastra ➔ Enkrypt ➔ Qdrant)**:
-   * When a user queries the Advisor, Mastra routes the prompt through Enkrypt AI's input gate to block prompt injection payloads.
-   * The clean prompt is converted into a deterministic query vector to search Qdrant.
-   * Retrieved vector chunks are packaged by Mastra's state container and sent securely to the LLM.
-3. **Safety Trace Auditing**:
-   * Every step's metadata, prompt safety score, and the Qdrant retrieval parameters are logged together under a single `trace_id` in the LibSQL dashboard database for compliance auditing.
 
 ---
 
