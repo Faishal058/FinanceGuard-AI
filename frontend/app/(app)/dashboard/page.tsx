@@ -46,6 +46,18 @@ const agentIcons: Record<string, string> = {
 export default function DashboardPage() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null)
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('fg_user')
+      if (stored) {
+        setUser(JSON.parse(stored))
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, [])
 
   useEffect(() => {
     async function loadData() {
@@ -78,7 +90,7 @@ export default function DashboardPage() {
       {/* ── Page Header ── */}
       <PageHeader
         title="Dashboard"
-        description="Welcome back, Alexandra. Here's your complete financial overview."
+        description={user ? `Welcome back, ${user.name.split(' ')[0]}. Here's your complete financial overview.` : "Welcome back, Alexandra. Here's your complete financial overview."}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" leftIcon={<Sparkles className="h-3.5 w-3.5" />}>

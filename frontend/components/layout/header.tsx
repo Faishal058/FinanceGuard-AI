@@ -136,7 +136,7 @@ function NotificationsDropdown({ onClose }: { onClose: () => void }) {
 /* ─────────────────────────────────────────────────────────
    USER MENU DROPDOWN
 ───────────────────────────────────────────────────────── */
-function UserMenuDropdown({ onClose }: { onClose: () => void }) {
+function UserMenuDropdown({ onClose, user }: { onClose: () => void; user: { name: string; email: string } | null }) {
   return (
     <motion.div
       variants={fadeInDown}
@@ -147,8 +147,8 @@ function UserMenuDropdown({ onClose }: { onClose: () => void }) {
     >
       {/* User info */}
       <div className="px-4 py-3 border-b border-border">
-        <p className="text-sm font-semibold text-foreground">Alex Morgan</p>
-        <p className="text-xs text-muted-foreground">alex@example.com</p>
+        <p className="text-sm font-semibold text-foreground">{user ? user.name : 'Alex Morgan'}</p>
+        <p className="text-xs text-muted-foreground">{user ? user.email : 'alex@example.com'}</p>
       </div>
 
       <div className="p-1.5">
@@ -191,8 +191,18 @@ export function Header({ onSidebarToggle, sidebarOpen, onCommandPalette }: Heade
   const [showNotifications, setShowNotifications] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
 
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null)
+
   useEffect(() => {
     setMounted(true)
+    try {
+      const stored = localStorage.getItem('fg_user')
+      if (stored) {
+        setUser(JSON.parse(stored))
+      }
+    } catch (e) {
+      console.error(e)
+    }
   }, [])
 
   const unreadCount = mockNotifications.filter(n => !n.read).length
@@ -302,16 +312,16 @@ export function Header({ onSidebarToggle, sidebarOpen, onCommandPalette }: Heade
               className="flex items-center gap-2 h-8 px-2 rounded-xl hover:bg-surface-2 transition-smooth"
             >
               <div className="h-6 w-6 rounded-lg gradient-brand flex items-center justify-center shrink-0">
-                <span className="text-xs font-bold text-white">A</span>
+                <span className="text-xs font-bold text-white">{user ? user.name[0].toUpperCase() : 'A'}</span>
               </div>
-              <span className="hidden sm:block text-sm font-medium text-foreground">Alex</span>
+              <span className="hidden sm:block text-sm font-medium text-foreground">{user ? user.name.split(' ')[0] : 'Alex'}</span>
             </button>
             <AnimatePresence>
               {showUserMenu && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={closeAll} />
                   <div className="relative z-20">
-                    <UserMenuDropdown onClose={closeAll} />
+                    <UserMenuDropdown onClose={closeAll} user={user} />
                   </div>
                 </>
               )}

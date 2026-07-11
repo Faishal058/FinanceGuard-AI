@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -107,6 +107,18 @@ interface SidebarProps {
 
 export function Sidebar({ open, onToggle }: SidebarProps) {
   const pathname = usePathname()
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null)
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('fg_user')
+      if (stored) {
+        setUser(JSON.parse(stored))
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, [])
 
   return (
     <>
@@ -256,7 +268,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
           )}>
             <div className="h-7 w-7 shrink-0 rounded-lg overflow-hidden">
               <div className="h-full w-full gradient-brand flex items-center justify-center">
-                <span className="text-xs font-bold text-white">A</span>
+                 <span className="text-xs font-bold text-white">{user ? user.name[0].toUpperCase() : 'A'}</span>
               </div>
             </div>
             <AnimatePresence>
@@ -267,8 +279,8 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
                   exit={{ opacity: 0 }}
                   className="flex-1 min-w-0"
                 >
-                  <p className="text-sm font-medium text-foreground truncate">Alex Morgan</p>
-                  <p className="text-xs text-muted-foreground truncate">alex@example.com</p>
+                  <p className="text-sm font-medium text-foreground truncate">{user ? user.name : 'Alex Morgan'}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user ? user.email : 'alex@example.com'}</p>
                 </motion.div>
               )}
             </AnimatePresence>

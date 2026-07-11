@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/progress'
 import { pageVariants, containerVariants, itemVariants } from '@/lib/animations'
 import { User, Bell, Shield, Palette, Database, Key, Save, LogOut } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const sections = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -35,6 +35,18 @@ export default function SettingsPage() {
   const [active, setActive] = useState('profile')
   const [notifications, setNotifications] = useState({ email: true, push: true, sms: false })
   const [privacy, setPrivacy] = useState({ analytics: true, dataCollection: false })
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null)
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('fg_user')
+      if (stored) {
+        setUser(JSON.parse(stored))
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, [])
 
   return (
     <motion.div
@@ -82,7 +94,7 @@ export default function SettingsPage() {
               {/* Avatar */}
               <div className="flex items-center gap-5">
                 <div className="h-16 w-16 rounded-2xl gradient-brand flex items-center justify-center text-2xl font-bold text-white shrink-0">
-                  A
+                  {user ? user.name[0].toUpperCase() : 'A'}
                 </div>
                 <div>
                   <Button variant="outline" size="sm">Change Avatar</Button>
@@ -90,8 +102,8 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input label="Full Name" defaultValue="Alexandra Morgan" />
-                <Input label="Email" type="email" defaultValue="alex@example.com" />
+                <Input label="Full Name" value={user?.name || ''} readOnly />
+                <Input label="Email" type="email" value={user?.email || ''} readOnly />
                 <Input label="Phone" type="tel" placeholder="+1 (555) 000-0000" />
                 <Input label="Timezone" defaultValue="UTC-5 (Eastern Time)" />
               </div>
