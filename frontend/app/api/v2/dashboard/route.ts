@@ -50,16 +50,51 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    if (docCount === 0) {
+      return NextResponse.json({
+        metrics: {
+          netWorth: 0,
+          totalAssets: 0,
+          totalLiabilities: 0,
+          monthlyIncome: 0,
+          monthlyExpenses: 0,
+          savingsRate: 0,
+          debtRatio: 0,
+          healthScore: 0,
+          riskTolerance: 5,
+          documentCount: 0,
+        },
+        netWorthTrend: [
+          { date: '1/1', value: 0 },
+          { date: '2/1', value: 0 },
+          { date: '3/1', value: 0 },
+          { date: '4/1', value: 0 },
+          { date: '5/1', value: 0 },
+          { date: '6/1', value: 0 },
+        ],
+        assetAllocation: [
+          { name: 'Checking', value: 0, fill: '#6366f1' },
+          { name: 'Emergency Fund', value: 0, fill: '#10b981' },
+          { name: 'Investments', value: 0, fill: '#f59e0b' },
+          { name: 'Liabilities', value: 0, fill: '#ef4444' },
+        ],
+        activityFeed: [],
+      })
+    }
+
     const profile = profileRes.rows[0]
     
     // Standard default financial profile properties
-    const netWorth = profile ? (profile.net_worth as number) : 485230.00
-    const dti = profile ? (profile.debt_to_income_ratio as number) : 0.208
-    const riskTolerance = profile ? (profile.risk_tolerance_score as number) : 5
+    const netWorth = profile && profile.net_worth !== null ? (profile.net_worth as number) : 485230.00
+    const dti = profile && profile.debt_to_income_ratio !== null ? (profile.debt_to_income_ratio as number) : 0.208
+    const riskTolerance = profile && profile.risk_tolerance_score !== null ? (profile.risk_tolerance_score as number) : 5
     
-    const monthlyIncome = profile && profile.monthly_gross ? (profile.monthly_gross as number) : 8500.00
-    const monthlyExpenses = profile && profile.monthly_burn ? (profile.monthly_burn as number) : 3200.00
+    const monthlyIncome = profile && profile.monthly_gross !== null ? (profile.monthly_gross as number) : 8500.00
+    const monthlyExpenses = profile && profile.monthly_burn !== null ? (profile.monthly_burn as number) : 3200.00
     const savingsRate = monthlyIncome > 0 ? (monthlyIncome - monthlyExpenses) / monthlyIncome : 0.62
+    
+    const totalAssets = netWorth + 127220.00
+    const totalLiabilities = 127220.00
     
     // Health score algorithm: higher net worth, lower DTI, higher savings rate = higher score
     let healthScore = 70
@@ -73,6 +108,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       metrics: {
         netWorth,
+        totalAssets,
+        totalLiabilities,
         monthlyIncome,
         monthlyExpenses,
         savingsRate,
