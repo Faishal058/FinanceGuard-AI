@@ -7,23 +7,14 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'FinanceGuard AI - Enterprise Financial Intelligence Platform',
   description: 'AI-powered financial intelligence platform with advanced analysis, risk assessment, and real-time market insights.',
-  generator: 'v0.app',
   icons: {
     icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
       {
         url: '/icon.svg',
         type: 'image/svg+xml',
       },
     ],
-    apple: '/apple-icon.png',
+    apple: '/icon.svg',
   },
 }
 
