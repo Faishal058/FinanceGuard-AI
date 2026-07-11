@@ -304,5 +304,61 @@ export class QdrantClientWrapper {
       console.error('Qdrant delete by user failed', e)
       return false
     }
+  async scrollPoints(collectionName: string, userId: string, limit = 100): Promise<any[]> {
+    if (this.useMock) {
+      await ensureFallbackTable()
+      const db = getDbClient()
+      const result = await db.execute({
+        sql: `SELECT * FROM mock_vector_store WHERE user_id = ?`,
+        args: [userId],
+      })
+      return result.rows.map(row => {
+        try {
+          return {
+            id: row.id,
+            payload: JSON.parse(row.metadata_json as string),
+            text: row.text as string,
+          }
+        } catch (e) {
+          return null
+        }
+      }).filter(Boolean) as any[]
+    }
+
+    try {
+      const response = await fetch(`${this.url}/collections/${collectionName}/points/scroll`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': this.apiKey || '',
+        },
+        body: JSON.stringify({
+          filter: {
+            must: [
+              {
+                key: 'user_id',
+                match: {
+                  value: userId,
+                },
+              },
+            ],
+          },
+          limit,
+          with_payload: true,
+          with_vector: false,
+        }),
+      })
+      const data = await response.json()
+      const points = data.result?.points || []
+      return points.map((p: any) => ({
+        id: p.id,
+        payload: p.payload,
+        text: p.payload?.text || '',
+      }))
+    } catch (e) {
+      console.error('Qdrant scroll points failed, falling back to local list', e)
+      this.useMock = true
+      return this.scrollPoints(collectionName, userId, limit)
+    }
   }
 }
