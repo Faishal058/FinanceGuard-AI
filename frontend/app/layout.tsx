@@ -49,7 +49,7 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           {children}
           <Toaster position="top-right" richColors />
-          {process.env.NODE_ENV === 'production' && <Analytics />}
+          <Analytics />
         </ThemeProvider>
       </body>
     </html>
