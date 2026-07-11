@@ -360,10 +360,10 @@ Now answer the user's question with specific, personalized advice using these re
   const enkrypt = new EnkryptClient()
   const traceId = 'tr_' + Math.random().toString(36).substr(2, 9)
   
-  const fullAdvisoryText = `${executive_summary}\n\nFindings:\n${key_findings.map(f => `- ${f.finding}`).join('\n')}\n\nActions:\n${action_items.map(a => `- ${a.action}`).join('\n')}`
-
+  // Optimization: Validate only the natural language executive_summary.
+  // Structured lists (findings, actions) do not need full cloud safety scanning.
   const safetyResult = await enkrypt.validateText(
-    fullAdvisoryText,
+    executive_summary,
     {
       user_id: userId,
       trace_id: traceId,

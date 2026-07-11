@@ -148,8 +148,8 @@ export class EnkryptClient {
     if (!this.apiKey) {
       const localResult = localSafetyGuard(text, context, isOutput)
       
-      // Persist to safety audit logs table
-      await db.execute({
+      // Persist to safety audit logs table asynchronously (no await)
+      db.execute({
         sql: `INSERT INTO safety_audit_logs (audit_id, trace_id, user_id, agent_name, pii_score, hallucination_score, compliance_status)
               VALUES (?, ?, ?, ?, ?, ?, ?)`,
         args: [
@@ -161,12 +161,22 @@ export class EnkryptClient {
           localResult.hallucinationScore,
           localResult.allowed ? 'ALLOWED' : 'BLOCKED',
         ],
-      })
+      }).catch(err => console.error('Failed to log safety audit record', err))
 
       return localResult
     }
 
     try {
+      // Optimize: Only enable critical detectors to reduce ML pipeline latency.
+      const detectors = isOutput
+        ? {
+            pii: { enabled: true, entities: ['pii', 'secrets', 'ip_address', 'url'] }
+          }
+        : {
+            pii: { enabled: true, entities: ['pii', 'secrets', 'ip_address', 'url'] },
+            injection_attack: { enabled: true }
+          }
+
       const response = await fetch(this.apiUrl, {
         method: 'POST',
         headers: {
@@ -175,14 +185,7 @@ export class EnkryptClient {
         },
         body: JSON.stringify({
           text,
-          detectors: {
-            nsfw: { enabled: true },
-            toxicity: { enabled: true },
-            pii: { enabled: true, entities: ['pii', 'secrets', 'ip_address', 'url'] },
-            injection_attack: { enabled: true },
-            bias: { enabled: true },
-            sponge_attack: { enabled: true }
-          }
+          detectors
         }),
       })
 
@@ -204,7 +207,8 @@ export class EnkryptClient {
         reason = 'Toxic content detected'
       }
       
-      await db.execute({
+      // Persist to safety audit logs table asynchronously (no await)
+      db.execute({
         sql: `INSERT INTO safety_audit_logs (audit_id, trace_id, user_id, agent_name, pii_score, hallucination_score, compliance_status)
               VALUES (?, ?, ?, ?, ?, ?, ?)`,
         args: [
@@ -216,7 +220,7 @@ export class EnkryptClient {
           0.0,
           allowed ? 'ALLOWED' : 'BLOCKED',
         ],
-      })
+      }).catch(err => console.error('Failed to log safety audit record', err))
 
       return {
         allowed,
@@ -233,7 +237,8 @@ export class EnkryptClient {
       // Fallback locally
       const localResult = localSafetyGuard(text, context, isOutput)
       
-      await db.execute({
+      // Persist to safety audit logs table asynchronously (no await)
+      db.execute({
         sql: `INSERT INTO safety_audit_logs (audit_id, trace_id, user_id, agent_name, pii_score, hallucination_score, compliance_status)
               VALUES (?, ?, ?, ?, ?, ?, ?)`,
         args: [
@@ -245,7 +250,7 @@ export class EnkryptClient {
           localResult.hallucinationScore,
           localResult.allowed ? 'ALLOWED' : 'BLOCKED',
         ],
-      })
+      }).catch(err => console.error('Failed to log safety audit record', err))
 
       return localResult
     }

@@ -347,36 +347,49 @@ export async function runIngestAgent(
   const chunkSize = 512
   const overlap = 50
   const words = fileText.split(/\s+/)
-  const chunks: string[] = []
+  let chunks: string[] = []
   
   for (let i = 0; i < words.length; i += chunkSize - overlap) {
     chunks.push(words.slice(i, i + chunkSize).join(' '))
     if (i + chunkSize >= words.length) break
   }
 
-  // 2. Vectorize chunks and upsert to Qdrant fallback
+  // Optimization: CSV transaction files do not require deep semantic search of raw text
+  // since structured rows are parsed and written directly to user_profiles. Limit to max 3 chunks.
+  if (document_type === 'csv_export' && chunks.length > 3) {
+    chunks = chunks.slice(0, 3)
+  }
+
+  // 2. Vectorize chunks in batches of 5 to avoid network/CPU congestion
   const qdrant = new QdrantClientWrapper()
   await qdrant.initCollection('financial_documents')
   
-  const vectorPoints = await Promise.all(
-    chunks.map(async (chunkText, index) => {
-      const vector = await getEmbedding(chunkText)
-      return {
-        id: `${documentId}-${index}`,
-        vector,
-        payload: {
-          user_id: userId,
-          document_id: documentId,
-          document_type,
-          upload_date: new Date().toISOString().split('T')[0],
-          embedding_version: 'text-embedding-3-large-v1',
-          chunk_index: index,
-          total_chunks: chunks.length,
-          text: chunkText,
-        },
-      }
-    })
-  )
+  const vectorPoints: any[] = []
+  const batchSize = 5
+  for (let i = 0; i < chunks.length; i += batchSize) {
+    const batch = chunks.slice(i, i + batchSize)
+    const batchResults = await Promise.all(
+      batch.map(async (chunkText, batchIndex) => {
+        const index = i + batchIndex
+        const vector = await getEmbedding(chunkText)
+        return {
+          id: `${documentId}-${index}`,
+          vector,
+          payload: {
+            user_id: userId,
+            document_id: documentId,
+            document_type,
+            upload_date: new Date().toISOString().split('T')[0],
+            embedding_version: 'text-embedding-3-large-v1',
+            chunk_index: index,
+            total_chunks: chunks.length,
+            text: chunkText,
+          },
+        }
+      })
+    )
+    vectorPoints.push(...batchResults)
+  }
 
   await qdrant.upsertPoints('financial_documents', vectorPoints)
 
