@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient, initDb } from '@/lib/backend/db'
 import { authenticateUser } from '@/lib/backend/auth'
 import { ConsentManager } from '@/lib/backend/governance'
-// NOTE: runIngestAgent and QdrantClientWrapper are dynamically imported inside
-// POST/DELETE handlers only — this prevents the heavy pdf-parse + mastra modules
-// from loading on GET requests and crashing the Vercel serverless function.
+import { runIngestAgent } from '@/lib/backend/agents/ingest'
+import { QdrantClientWrapper } from '@/lib/backend/qdrant'
 
 
 export async function GET(req: NextRequest) {
@@ -74,8 +73,6 @@ export async function POST(req: NextRequest) {
     const documentId = 'doc_' + Math.random().toString(36).substr(2, 9)
 
     // 3. Trigger Ingest Agent Pipeline (Parses, chunks, uploads to Qdrant vector store, indexes SQLite)
-    // Dynamic import prevents this heavy module from loading on GET requests
-    const { runIngestAgent } = await import('@/lib/backend/agents/ingest')
     const ingestResult = await runIngestAgent(buffer, file.name, user.userId, documentId)
 
     return NextResponse.json({
@@ -114,8 +111,7 @@ export async function DELETE(req: NextRequest) {
 
     const db = getDbClient()
 
-    // Delete vector points — dynamic import to avoid loading on GET requests
-    const { QdrantClientWrapper } = await import('@/lib/backend/qdrant')
+    // Delete vector points
     const qdrant = new QdrantClientWrapper()
     await qdrant.deletePointsByDocId('financial_documents', documentId)
 
