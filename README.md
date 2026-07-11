@@ -8,7 +8,7 @@
 [![Featherless AI](https://img.shields.io/badge/Inference-Featherless%20AI-0284C7?style=for-the-badge)](#featherless-ai-integration)
 [![Enkrypt AI](https://img.shields.io/badge/Safety-Enkrypt%20AI-10B981?style=for-the-badge)](#enkrypt-ai-integration)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
+
 
 FinanceGuard AI is an advanced, production-grade financial orchestration system designed to parse unstructured financial documents, build unified financial profiles, run Monte Carlo simulations, flag potential risks, and deliver secure, compliance-vetted, real-time financial advisory.
 
