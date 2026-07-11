@@ -26,6 +26,25 @@ function LoginForm() {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (!searchParams) return
+    const token = searchParams.get('token')
+    const refreshToken = searchParams.get('refreshToken')
+    const oauthError = searchParams.get('error')
+
+    if (oauthError) {
+      setError(decodeURIComponent(oauthError))
+    } else if (token && refreshToken) {
+      localStorage.setItem('fg_token', token)
+      localStorage.setItem('fg_refresh', refreshToken)
+      try {
+        const claims = JSON.parse(atob(token.split('.')[1]))
+        localStorage.setItem('fg_user', JSON.stringify({ userId: claims.userId, email: claims.email, role: claims.role }))
+      } catch (e) {}
+      window.location.href = '/dashboard'
+    }
+  }, [searchParams])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -81,36 +100,9 @@ function LoginForm() {
     }
   }
 
-  const handleSocialLogin = async (provider: string) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const pLower = provider.toLowerCase()
-      const email = `${pLower}.demo@financeguard.ai`
-      const name = `${provider} Demo User`
-      
-      const response = await fetch('/api/v2/auth/social', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: pLower, email, name }),
-      })
-
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Social login failed')
-      }
-
-      localStorage.setItem('fg_token', data.token)
-      localStorage.setItem('fg_refresh', data.refreshToken)
-      localStorage.setItem('fg_user', JSON.stringify(data.user))
-      
-      window.location.href = '/dashboard'
-    } catch (err: any) {
-      console.error(err)
-      setError(err.message || 'Social authentication failed')
-    } finally {
-      setLoading(false)
-    }
+  const handleSocialLogin = (provider: string) => {
+    const pLower = provider.toLowerCase()
+    window.location.href = `/api/v2/auth/social/redirect?provider=${pLower}`
   }
 
   return (
