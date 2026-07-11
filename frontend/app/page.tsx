@@ -1269,28 +1269,9 @@ function CTASection() {
 
 function Footer() {
   return (
-    <footer id="contact" className="border-t border-white/[0.06] pt-16 pb-8 px-4">
+    <footer id="contact" className="border-t border-white/[0.06] py-8 px-4">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 mb-14">
-          <div>
-            <div className="flex items-center gap-2.5 mb-4">
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
-              >
-                <Shield className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-bold text-white text-sm">
-                FinanceGuard <span className="text-indigo-400">AI</span>
-              </span>
-            </div>
-            <p className="text-sm text-white/38 leading-relaxed max-w-[220px]">
-              The AI-powered Financial Intelligence Platform for enterprise teams who demand more from their data.
-            </p>
-          </div>
-        </div>
-
-        <div className="border-t border-white/[0.06] pt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
           <p className="text-xs text-white/22">© 2026 FinanceGuard AI, Inc. All rights reserved.</p>
           <p className="text-xs text-white/18">
             Powered by Mastra · Qdrant · Enkrypt AI · OpenAI · Redis · Kubernetes
