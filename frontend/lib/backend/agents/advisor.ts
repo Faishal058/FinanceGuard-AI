@@ -88,14 +88,25 @@ export async function runAdvisorAgent(
       const promptObj = await PromptRegistry.fetchPrompt('advisor')
       const memoryString = memories.map(m => `Query: "${m.payload.query}" -> Advisory Summary: "${m.payload.summary}"`).join('\n')
       
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const apiKey = process.env.OPENAI_API_KEY || ''
+      const isOpenRouter = apiKey.startsWith('sk-or-')
+      const apiUrl = isOpenRouter ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions'
+      const modelId = isOpenRouter ? 'google/gemini-2.5-flash:free' : promptObj.model_id
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      }
+      if (isOpenRouter) {
+        headers['HTTP-Referer'] = 'http://localhost:3000'
+        headers['X-Title'] = 'FinanceGuard'
+      }
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
+        headers,
         body: JSON.stringify({
-          model: promptObj.model_id,
+          model: modelId,
           temperature: promptObj.temperature,
           top_p: promptObj.top_p,
           max_tokens: promptObj.max_tokens,

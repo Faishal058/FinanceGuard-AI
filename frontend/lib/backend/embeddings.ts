@@ -1,8 +1,8 @@
 export async function getEmbedding(text: string): Promise<number[]> {
   const apiKey = process.env.OPENAI_API_KEY
   
-  if (!apiKey) {
-    // Return a deterministic mock vector if no API key is set
+  if (!apiKey || apiKey.startsWith('sk-or-')) {
+    // Return a deterministic mock vector if no API key is set or using OpenRouter (which lacks embeddings APIs)
     return new Array(3072).fill(0).map((_, i) => Math.sin(i))
   }
 
