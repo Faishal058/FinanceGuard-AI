@@ -90,7 +90,7 @@ export async function runAdvisorAgent(
       
       const apiKey = process.env.OPENAI_API_KEY || ''
       const isOpenRouter = apiKey.startsWith('sk-or-')
-      const isFeatherless = apiKey.startsWith('fl-')
+      const isFeatherless = apiKey.startsWith('fl-') || apiKey.startsWith('rc_')
       
       let apiUrl = 'https://api.openai.com/v1/chat/completions'
       let modelId = promptObj.model_id
