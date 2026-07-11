@@ -81,6 +81,38 @@ function LoginForm() {
     }
   }
 
+  const handleSocialLogin = async (provider: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const pLower = provider.toLowerCase()
+      const email = `${pLower}.demo@financeguard.ai`
+      const name = `${provider} Demo User`
+      
+      const response = await fetch('/api/v2/auth/social', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: pLower, email, name }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Social login failed')
+      }
+
+      localStorage.setItem('fg_token', data.token)
+      localStorage.setItem('fg_refresh', data.refreshToken)
+      localStorage.setItem('fg_user', JSON.stringify(data.user))
+      
+      window.location.href = '/dashboard'
+    } catch (err: any) {
+      console.error(err)
+      setError(err.message || 'Social authentication failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen items-stretch">
       {/* ── Left panel (Branding) ── */}
@@ -271,7 +303,7 @@ function LoginForm() {
               { label: 'Google', logo: 'G' },
               { label: 'Microsoft', logo: 'M' },
             ].map(provider => (
-              <Button key={provider.label} variant="outline" size="md" onClick={() => window.location.href = '/dashboard'}>
+              <Button key={provider.label} variant="outline" size="md" onClick={() => handleSocialLogin(provider.label)} disabled={loading}>
                 <span className="font-bold mr-1.5">{provider.logo}</span>
                 {provider.label}
               </Button>
