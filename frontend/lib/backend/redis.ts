@@ -12,35 +12,60 @@ let redisSubClient: Redis | null = null
 export function getRedisClient(): Redis {
   if (redisClient) return redisClient
 
+  const redisUrl = process.env.REDIS_URL
   const host = process.env.REDIS_HOST || 'localhost'
   const port = parseInt(process.env.REDIS_PORT || '6379', 10)
   const sentinelHosts = process.env.REDIS_SENTINEL_HOSTS // format: "host1:port1,host2:port2"
   const sentinelName = process.env.REDIS_SENTINEL_NAME || 'mymaster'
 
-  if (sentinelHosts) {
-    const sentinels = sentinelHosts.split(',').map(s => {
-      const [h, p] = s.split(':')
-      return { host: h.trim(), port: parseInt(p.trim(), 10) || 26379 }
+  try {
+    if (redisUrl) {
+      console.log('Connecting to Redis via URL...')
+      redisClient = new Redis(redisUrl, {
+        connectTimeout: 2000,
+        maxRetriesPerRequest: 0,
+        lazyConnect: true,
+        enableOfflineQueue: false,
+      })
+    } else if (sentinelHosts) {
+      const sentinels = sentinelHosts.split(',').map(s => {
+        const [h, p] = s.split(':')
+        return { host: h.trim(), port: parseInt(p.trim(), 10) || 26379 }
+      })
+      console.log('Connecting to Redis via Sentinel cluster...', sentinels)
+      redisClient = new Redis({
+        sentinels,
+        name: sentinelName,
+        connectTimeout: 2000,
+        maxRetriesPerRequest: 0,
+        lazyConnect: true,
+        enableOfflineQueue: false,
+      })
+    } else {
+      console.log(`Connecting to standalone Redis at ${host}:${port}...`)
+      redisClient = new Redis({
+        host,
+        port,
+        connectTimeout: 2000,
+        maxRetriesPerRequest: 0,
+        lazyConnect: true,
+        enableOfflineQueue: false,
+      })
+    }
+
+    // Don't crash the module on connection errors — let the caller handle them
+    redisClient.on('error', (err) => {
+      console.warn('[Redis] Connection error (non-fatal):', err.message)
     })
-    console.log('Connecting to Redis via Sentinel cluster...', sentinels)
-    redisClient = new Redis({
-      sentinels,
-      name: sentinelName,
-      connectTimeout: 1000,
-      maxRetriesPerRequest: 0,
-    })
-  } else {
-    console.log(`Connecting to standalone Redis at ${host}:${port}...`)
-    redisClient = new Redis({
-      host,
-      port,
-      connectTimeout: 1000,
-      maxRetriesPerRequest: 0,
-    })
+  } catch (err: any) {
+    console.warn('[Redis] Failed to initialize client (non-fatal):', err.message)
+    throw err
   }
 
   return redisClient
 }
+
+
 
 export function getRedisSubClient(): Redis {
   if (redisSubClient) return redisSubClient
