@@ -11,7 +11,6 @@ if (typeof global !== 'undefined') {
   }
 }
 
-import * as pdf from 'pdf-parse'
 import { randomUUID } from 'crypto'
 import { getDbClient } from '../db'
 import { QdrantClientWrapper } from '../qdrant'
@@ -221,6 +220,7 @@ function parseTextToTransactions(text: string): RawTransaction[] {
 
 export async function parsePdfDocument(buffer: Buffer): Promise<string> {
   try {
+    const pdf = await import('pdf-parse')
     const parsePdf = (pdf as any).default || pdf
     const data = await parsePdf(buffer)
     return data.text
