@@ -1,0 +1,13 @@
+date,description,amount,category
+2026-06-01,Salary Employer Direct Deposit,5500.00,income
+2026-06-02,Rent Payment Apartment 4B,-1800.00,housing
+2026-06-04,Whole Foods Grocery,-150.25,food
+2026-06-05,Netflix Subscription,-15.99,entertainment
+2026-06-08,Exxon Mobil Gas,-45.00,transportation
+2026-06-10,Chipotle Grill,-18.50,food
+2026-06-12,Electric Utility Bill,-112.40,utilities
+2026-06-15,Starbucks Coffee,-6.75,food
+2026-06-18,Gym Membership Fee,-50.00,health
+2026-06-20,Uber Ride,-22.50,transportation
+2026-06-22,Amazon Web Services,-89.10,business
+2026-06-25,Sushi Dinner Grill,-85.00,food
