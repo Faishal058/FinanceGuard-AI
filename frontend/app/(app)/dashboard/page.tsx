@@ -84,11 +84,21 @@ export default function DashboardPage() {
     loadData()
   }, [])
 
-  const health = data?.metrics || mockFinancialHealth
-  const topAgents = mockAgents.slice(0, 4)
-  const recentActivity = data?.activityFeed || mockActivityFeed.slice(0, 4)
-  const netWorthTrend = data?.netWorthTrend || mockDashboardMetrics.netWorthTrend
-  const assetAllocation = data?.assetAllocation || mockDashboardMetrics.assetAllocation
+  const hasDocs = data?.metrics && data.metrics.documentCount > 0
+  const health = data?.metrics || {
+    totalAssets: 0,
+    totalLiabilities: 0,
+    monthlyIncome: 0,
+    monthlyExpenses: 0,
+    savingsRate: 0,
+    riskScore: 0,
+    debtToIncomeRatio: 0,
+    documentCount: 0
+  }
+  const topAgents = hasDocs ? mockAgents.slice(0, 4) : []
+  const recentActivity = hasDocs ? (data?.activityFeed || []) : []
+  const netWorthTrend = hasDocs ? (data?.netWorthTrend || []) : []
+  const assetAllocation = hasDocs ? (data?.assetAllocation || []) : []
 
 
   return (
@@ -284,27 +294,33 @@ export default function DashboardPage() {
               </Link>
             </div>
             <div className="space-y-3">
-              {topAgents.map(agent => (
-                <motion.div
-                  key={agent.id}
-                  {...cardHoverProps}
-                  className="flex items-center gap-4 rounded-xl bg-surface-2 p-4 cursor-pointer"
-                >
-                  <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-lg">
-                    {agentIcons[agent.type]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-foreground text-sm">{agent.name}</p>
-                      <StatusBadge status={agent.status} size="xs" />
+              {topAgents.length === 0 ? (
+                <div className="text-center py-8 text-xs text-muted-foreground">
+                  No active agents running. Upload a statement to deploy financial agents.
+                </div>
+              ) : (
+                topAgents.map(agent => (
+                  <motion.div
+                    key={agent.id}
+                    {...cardHoverProps}
+                    className="flex items-center gap-4 rounded-xl bg-surface-2 p-4 cursor-pointer"
+                  >
+                    <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-lg">
+                      {agentIcons[agent.type]}
                     </div>
-                    <ConfidenceBar value={agent.confidenceScore} size="sm" className="mt-2" />
-                  </div>
-                  <p className="text-xs text-muted-foreground shrink-0" suppressHydrationWarning>
-                    {formatRelativeTime(agent.lastActivity)}
-                  </p>
-                </motion.div>
-              ))}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-foreground text-sm">{agent.name}</p>
+                        <StatusBadge status={agent.status} size="xs" />
+                      </div>
+                      <ConfidenceBar value={agent.confidenceScore} size="sm" className="mt-2" />
+                    </div>
+                    <p className="text-xs text-muted-foreground shrink-0" suppressHydrationWarning>
+                      {formatRelativeTime(agent.lastActivity)}
+                    </p>
+                  </motion.div>
+                ))
+              )}
             </div>
           </GlassCard>
         </motion.div>
@@ -319,10 +335,10 @@ export default function DashboardPage() {
             </div>
             <div className="space-y-2.5">
               {[
-                { label: 'Input Safety', value: 99 },
-                { label: 'Output Safety', value: 97 },
-                { label: 'Compliance', value: 95 },
-                { label: 'Bias Detection', value: 98 },
+                { label: 'Input Safety', value: hasDocs ? 99 : 0 },
+                { label: 'Output Safety', value: hasDocs ? 97 : 0 },
+                { label: 'Compliance', value: hasDocs ? 95 : 0 },
+                { label: 'Bias Detection', value: hasDocs ? 98 : 0 },
               ].map(item => (
                 <Progress key={item.label} value={item.value} variant="success"
                   size="sm" label={item.label} showLabel />
@@ -334,16 +350,22 @@ export default function DashboardPage() {
           <GlassCard padding="md">
             <SectionHeader title="Recent Activity" className="mb-4" />
             <div className="space-y-3">
-              {recentActivity.map(item => (
-                <div key={item.id} className="flex gap-3">
-                  <div className="mt-0.5 h-2 w-2 rounded-full bg-primary/60 shrink-0 ring-2 ring-primary/20" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground leading-tight">{item.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>
-                    <p className="text-xs text-tertiary mt-1" suppressHydrationWarning>{formatRelativeTime(item.timestamp)}</p>
-                  </div>
+              {recentActivity.length === 0 ? (
+                <div className="text-center py-6 text-xs text-muted-foreground">
+                  No recent activity logged.
                 </div>
-              ))}
+              ) : (
+                recentActivity.map(item => (
+                  <div key={item.id} className="flex gap-3">
+                    <div className="mt-0.5 h-2 w-2 rounded-full bg-primary/60 shrink-0 ring-2 ring-primary/20" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground leading-tight">{item.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>
+                      <p className="text-xs text-tertiary mt-1" suppressHydrationWarning>{formatRelativeTime(item.timestamp)}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </GlassCard>
         </motion.div>
