@@ -58,7 +58,7 @@ function NavItem({
       href={item.href}
       title={!open ? item.label : undefined}
       className={cn(
-        'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium',
+        'group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium',
         'transition-all duration-150 outline-none',
         'focus-visible:ring-2 focus-visible:ring-primary/50',
         isActive
@@ -202,10 +202,10 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="px-3 pt-4 pb-2"
+              className="px-3 pt-2.5 pb-1"
             >
               <button className={cn(
-                'w-full flex items-center gap-2.5 rounded-xl px-3 py-2',
+                'w-full flex items-center gap-2.5 rounded-xl px-3 py-1.5',
                 'bg-surface-2 border border-border text-muted-foreground',
                 'text-xs hover:border-primary/30 transition-smooth',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50'
@@ -221,7 +221,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
         </AnimatePresence>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto scrollable px-3 py-3 space-y-5">
+        <nav className="flex-1 overflow-y-auto scrollable px-3 py-2 space-y-3.5">
           {navSections.map((section) => (
             <div key={section.label}>
               {/* Section label */}
@@ -231,7 +231,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-tertiary"
+                    className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-tertiary"
                   >
                     {section.label}
                   </motion.p>
@@ -251,12 +251,12 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
         </nav>
 
         {/* Bottom — Profile & Collapse Toggle */}
-        <div className="border-t border-white/[0.06] px-3 py-4 space-y-2 shrink-0">
+        <div className="border-t border-white/[0.06] px-3 py-2.5 space-y-1 shrink-0">
           {/* Settings link */}
           <Link
             href={ROUTES.SETTINGS}
             className={cn(
-              'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium',
+              'flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium',
               'text-muted-foreground hover:bg-surface-2 hover:text-foreground transition-smooth',
               !open && 'justify-center'
             )}
@@ -274,7 +274,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
 
           {/* User profile */}
           <div className={cn(
-            'flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-surface-2 transition-smooth cursor-pointer',
+            'flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-surface-2 transition-smooth cursor-pointer',
             !open && 'justify-center'
           )}>
             <div className="h-7 w-7 shrink-0 rounded-lg overflow-hidden">
@@ -301,7 +301,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
           <button
             onClick={onToggle}
             className={cn(
-              'w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs',
+              'w-full flex items-center gap-3 rounded-xl px-3 py-2 text-xs',
               'text-muted-foreground hover:bg-surface-2 hover:text-foreground transition-smooth',
               !open && 'justify-center'
             )}
