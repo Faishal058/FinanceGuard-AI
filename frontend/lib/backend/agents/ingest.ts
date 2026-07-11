@@ -1,4 +1,5 @@
 import * as pdf from 'pdf-parse'
+import { randomUUID } from 'crypto'
 import { getDbClient } from '../db'
 import { QdrantClientWrapper } from '../qdrant'
 import { PromptRegistry } from '../prompt-registry'
@@ -357,7 +358,7 @@ export async function runIngestAgent(
         const index = i + batchIndex
         const vector = await getEmbedding(chunkText)
         return {
-          id: `${documentId}-${index}`,
+          id: randomUUID(),
           vector,
           payload: {
             user_id: userId,
