@@ -262,7 +262,7 @@ export async function runIngestAgent(
   if (transactions.length === 0) {
     // Check if OpenAI API key is present for smart parsing
     const apiKey = process.env.OPENAI_API_KEY || ''
-    const isFeatherless = apiKey.startsWith('fl-') || apiKey.startsWith('rc_')
+    const isFeatherless = apiKey.startsWith('fl-')
     const isRealOpenAI = apiKey.startsWith('sk-') && !apiKey.startsWith('sk-or-')
 
     if (apiKey && isRealOpenAI) {

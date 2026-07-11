@@ -8,7 +8,9 @@ import { runForecastAgent } from '@/lib/backend/agents/forecast'
 import { runAdvisorAgent } from '@/lib/backend/agents/advisor'
 import { Workflow } from '@/lib/backend/workflow'
 import { QualityGateService } from '@/lib/backend/quality-gates'
-import { getRedisClient, getRedisSubClient, publishWorkflowTask } from '@/lib/backend/redis'
+// Redis is dynamically imported inside the handler to avoid crashing the module
+// on cold start when REDIS_URL is not configured (e.g., Vercel free tier)
+
 
 export async function POST(req: NextRequest) {
   try {
@@ -232,6 +234,8 @@ export async function POST(req: NextRequest) {
 
     if (hasRedisConfig) {
       try {
+        // Dynamic import — only load ioredis when Redis is actually configured
+        const { getRedisClient, getRedisSubClient, publishWorkflowTask } = await import('@/lib/backend/redis')
         const redis = getRedisClient()
         const pubsub = getRedisSubClient()
         const taskId = 'task_' + Math.random().toString(36).substr(2, 9)

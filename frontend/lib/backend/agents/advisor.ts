@@ -90,11 +90,17 @@ export async function runAdvisorAgent(
 
   // 2. Synthesize using LLM or local rule-engine
   const apiKey = process.env.OPENAI_API_KEY || ''
+  // Key routing:
+  // sk-or-*  → OpenRouter (free models)
+  // fl-*     → Featherless AI
+  // sk-*     → Real OpenAI
+  // anything else (rc_, etc.) → treat as invalid, fall back to local rule engine
   const isOpenRouter = apiKey.startsWith('sk-or-')
-  const isFeatherless = apiKey.startsWith('fl-') || apiKey.startsWith('rc_')
-  const isRealOpenAI = apiKey.length > 10 && !isOpenRouter && !isFeatherless
+  const isFeatherless = apiKey.startsWith('fl-')
+  const isRealOpenAI = apiKey.startsWith('sk-') && !isOpenRouter
+  const isValidLLMKey = isOpenRouter || isFeatherless || isRealOpenAI
 
-  if (apiKey) {
+  if (apiKey && isValidLLMKey) {
     try {
       const memoryString = memories.map(m => `Query: "${m.payload.query}" -> Summary: "${m.payload.summary}"`).join('\n')
       const docContextString = docContexts.map((d, i) => `[Doc Chunk #${i+1}]:\n${d.payload.text}`).join('\n\n')
@@ -187,11 +193,19 @@ Now answer the user's question with specific, personalized advice using these re
       }
 
       console.log(`[Advisor] Calling ${modelId} at ${apiUrl}`)
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody),
-      })
+      const fetchController = new AbortController()
+      const fetchTimeout = setTimeout(() => fetchController.abort(), 15000)
+      let response: Response
+      try {
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody),
+          signal: fetchController.signal,
+        })
+      } finally {
+        clearTimeout(fetchTimeout)
+      }
 
       const data = await response.json()
 
