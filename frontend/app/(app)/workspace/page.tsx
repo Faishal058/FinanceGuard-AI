@@ -154,8 +154,28 @@ export default function WorkspacePage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const sessionIdRef = useRef<string>('')
 
+  const [documents, setDocuments] = useState<any[]>([])
+
   useEffect(() => {
     sessionIdRef.current = 'sess_' + Math.random().toString(36).substr(2, 9)
+    async function loadDocs() {
+      try {
+        const token = localStorage.getItem('fg_token')
+        if (!token) return
+        const response = await fetch('/api/v2/documents', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setDocuments(data.documents || [])
+        }
+      } catch (e) {
+        console.error('Failed to load documents in workspace', e)
+      }
+    }
+    loadDocs()
   }, [])
 
   const scrollToBottom = useCallback(() => {
@@ -406,7 +426,7 @@ export default function WorkspacePage() {
               Document Context
             </p>
             <div className="space-y-2">
-              {mockDocuments.filter(d => d.status === 'completed').slice(0, 4).map(doc => (
+              {documents.filter(d => d.status === 'completed').slice(0, 4).map(doc => (
                 <button
                   key={doc.id}
                   className="w-full flex items-center gap-2.5 rounded-xl p-2.5 hover:bg-surface-2 transition-smooth text-left"

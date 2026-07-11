@@ -9,7 +9,6 @@ import { EmptyState } from '@/components/common/empty-state'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { mockDocuments } from '@/lib/mock-data'
 import { pageVariants, containerVariants, itemVariants } from '@/lib/animations'
 import { formatShortDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -166,7 +165,7 @@ export default function DocumentsPage() {
       setDocuments(res.documents || [])
     } catch (e) {
       console.error('Failed to load documents', e)
-      setDocuments(mockDocuments) // fallback
+      setDocuments([])
     }
   }, [])
 
