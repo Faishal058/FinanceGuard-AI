@@ -90,15 +90,10 @@ export async function runAdvisorAgent(
 
   // 2. Synthesize using LLM or local rule-engine
   const apiKey = process.env.OPENAI_API_KEY || ''
-  // Key routing:
-  // sk-or-*  → OpenRouter (free models)
-  // fl-*     → Featherless AI
-  // sk-*     → Real OpenAI
-  // anything else (rc_, etc.) → treat as invalid, fall back to local rule engine
-  const isOpenRouter = apiKey.startsWith('sk-or-')
-  const isFeatherless = apiKey.startsWith('fl-')
-  const isRealOpenAI = apiKey.startsWith('sk-') && !isOpenRouter
-  const isValidLLMKey = isOpenRouter || isFeatherless || isRealOpenAI
+  // Only Featherless AI provider is supported.
+  // Accepted prefixes: fl-, fl_, rc-, rc_
+  const isFeatherless = apiKey.startsWith('fl-') || apiKey.startsWith('fl_') || apiKey.startsWith('rc-') || apiKey.startsWith('rc_')
+  const isValidLLMKey = isFeatherless
 
   if (apiKey && isValidLLMKey) {
     try {
@@ -107,25 +102,14 @@ export async function runAdvisorAgent(
       const forecast12m = forecast.projections.find(p => p.horizon_months === 12)
       const forecast60m = forecast.projections.find(p => p.horizon_months === 60)
 
-      let apiUrl = 'https://api.openai.com/v1/chat/completions'
-      let modelId = 'gpt-4o'
-
-      if (isOpenRouter) {
-        apiUrl = 'https://openrouter.ai/api/v1/chat/completions'
-        modelId = 'google/gemini-2.5-flash:free'
-      } else if (isFeatherless) {
-        apiUrl = 'https://api.featherless.ai/v1/chat/completions'
-        modelId = process.env.FEATHERLESS_MODEL || 'deepseek-ai/DeepSeek-V4-Pro'
-      }
+      const apiUrl = 'https://api.featherless.ai/v1/chat/completions'
+      const modelId = process.env.FEATHERLESS_MODEL || 'deepseek-ai/DeepSeek-V4-Pro'
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       }
-      if (isOpenRouter) {
-        headers['HTTP-Referer'] = 'http://localhost:3000'
-        headers['X-Title'] = 'FinanceGuard'
-      }
+
 
       // Self-contained system prompt with full JSON output schema embedded
       // Do NOT rely on response_format param (not supported by Featherless/DeepSeek)
@@ -187,10 +171,6 @@ Now answer the user's question with specific, personalized advice using these re
         ],
       }
 
-      // Only add response_format for native OpenAI (Featherless/DeepSeek doesn't support it)
-      if (isRealOpenAI) {
-        requestBody.response_format = { type: 'json_object' }
-      }
 
       console.log(`[Advisor] Calling ${modelId} at ${apiUrl}`)
       const fetchController = new AbortController()

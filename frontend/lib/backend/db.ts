@@ -2,6 +2,7 @@ import { createClient, Client } from '@libsql/client'
 import { PromptRegistry } from './prompt-registry'
 
 let clientInstance: Client | null = null
+let isDbInitialized = false
 
 export function getDbClient(): Client {
   if (clientInstance) return clientInstance
@@ -26,6 +27,7 @@ export function getDbClient(): Client {
 }
 
 export async function initDb() {
+  if (isDbInitialized) return
   const db = getDbClient()
   
   // User Profiles
@@ -237,4 +239,5 @@ export async function initDb() {
 
   // Seed default prompts if empty
   await PromptRegistry.initializeAndSeed()
+  isDbInitialized = true
 }

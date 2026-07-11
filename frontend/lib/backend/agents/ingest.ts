@@ -260,56 +260,28 @@ export async function runIngestAgent(
 
   // If CSV parser didn't work or it's a PDF, try AI parser, then fall back to regex
   if (transactions.length === 0) {
-    // Check if OpenAI API key is present for smart parsing
+    // Check if Featherless API key is present for smart parsing
     const apiKey = process.env.OPENAI_API_KEY || ''
-    const isFeatherless = apiKey.startsWith('fl-')
-    const isRealOpenAI = apiKey.startsWith('sk-') && !apiKey.startsWith('sk-or-')
+    // Supported prefixes: fl-, fl_, rc-, rc_
+    const isFeatherless = apiKey.startsWith('fl-') || apiKey.startsWith('fl_') || apiKey.startsWith('rc-') || apiKey.startsWith('rc_')
 
-    if (apiKey && isRealOpenAI) {
+    if (apiKey && isFeatherless) {
       try {
         const promptObj = await PromptRegistry.fetchPrompt('ingest')
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({
-            model: promptObj.model_id,
-            temperature: promptObj.temperature,
-            top_p: promptObj.top_p,
-            max_tokens: promptObj.max_tokens,
-            messages: [
-              { role: 'system', content: promptObj.prompt_text },
-              { role: 'user', content: `Document Name: ${fileName}\n\nDocument Text:\n${fileText.substring(0, 8000)}` },
-            ],
-            response_format: { type: 'json_object' },
-          }),
-        })
-        const data = await response.json()
-        const resultObj = JSON.parse(data.choices[0].message.content)
-        if (resultObj.transactions) transactions = resultObj.transactions
-      } catch (e) {
-        console.warn('OpenAI Parsing failed, falling back to regex parser', e)
-        transactions = parseTextToTransactions(fileText)
-      }
-    } else if (apiKey && !isRealOpenAI) {
-      // Featherless / OpenRouter key — try with the right endpoint
-      try {
-        const promptObj = await PromptRegistry.fetchPrompt('ingest')
-        const isOpenRouter = apiKey.startsWith('sk-or-')
-        const apiUrl = isOpenRouter
-          ? 'https://openrouter.ai/api/v1/chat/completions'
-          : 'https://api.featherless.ai/v1/chat/completions'
-        const modelId = isOpenRouter
-          ? 'google/gemini-2.5-flash:free'
-          : (process.env.FEATHERLESS_MODEL || 'deepseek-ai/DeepSeek-V4-Pro')
+        const apiUrl = 'https://api.featherless.ai/v1/chat/completions'
+        const modelId = process.env.FEATHERLESS_MODEL || 'deepseek-ai/DeepSeek-V4-Pro'
         const headers: Record<string, string> = {
-          'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
         }
-        if (isOpenRouter) { headers['HTTP-Referer'] = 'http://localhost:3000'; headers['X-Title'] = 'FinanceGuard' }
 
         const response = await fetch(apiUrl, {
-          method: 'POST', headers,
+          method: 'POST',
+          headers,
           body: JSON.stringify({
-            model: modelId, temperature: 0.1, max_tokens: 4096,
+            model: modelId,
+            temperature: 0.1,
+            max_tokens: 4096,
             messages: [
               { role: 'system', content: promptObj.prompt_text },
               { role: 'user', content: `Document Name: ${fileName}\n\nDocument Text:\n${fileText.substring(0, 8000)}` },
@@ -324,7 +296,7 @@ export async function runIngestAgent(
           if (resultObj.transactions) transactions = resultObj.transactions
         }
       } catch (e) {
-        console.warn('AI Parsing failed, falling back to regex parser', e)
+        console.warn('Featherless AI Parsing failed, falling back to regex parser', e)
         transactions = parseTextToTransactions(fileText)
       }
     } else {

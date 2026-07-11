@@ -166,38 +166,22 @@ export class QdrantClientWrapper {
         .slice(0, limit)
     }
 
-    // Embed query using OpenAI if a real OpenAI key is present
-    let queryVector = new Array(3072).fill(0)
-    const rawKey = process.env.OPENAI_API_KEY || ''
-    const isRealOpenAI = rawKey.length > 10 &&
-      !rawKey.startsWith('sk-or-') &&
-      !rawKey.startsWith('fl-') &&
-      !rawKey.startsWith('rc_')
-
-    if (isRealOpenAI) {
-      try {
-        const embRes = await fetch('https://api.openai.com/v1/embeddings', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${rawKey}`,
-          },
-          body: JSON.stringify({
-            input: queryText,
-            model: 'text-embedding-3-large',
-          }),
-        })
-        const embData = await embRes.json()
-        // Guard: API may return an error object instead of data array
-        if (embData?.data?.[0]?.embedding) {
-          queryVector = embData.data[0].embedding
-        } else {
-          console.warn('OpenAI embedding API returned no data, using zero-vector fallback.')
-        }
-      } catch (e) {
-        console.warn('Failed to generate query embedding, using zero-vector fallback:', e)
+    // Generate deterministic vector for query text
+    const queryVector = (() => {
+      let seed = 5381
+      for (let i = 0; i < queryText.length; i++) {
+        seed = ((seed << 5) + seed) ^ queryText.charCodeAt(i)
+        seed = seed >>> 0
       }
-    }
+      const vec: number[] = []
+      for (let i = 0; i < 3072; i++) {
+        const v = Math.sin(seed * (i + 1) * 0.0001 + i)
+        vec.push(v)
+      }
+      const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1
+      return vec.map(v => v / norm)
+    })()
+
 
     try {
       const response = await fetch(`${this.url}/collections/${collectionName}/points/search`, {
