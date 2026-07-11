@@ -141,6 +141,23 @@ To operate safely under strict regulatory constraints, the platform runs all inp
 
 ---
 
+## 🔗 Qdrant Integration between Mastra & Enkrypt AI
+
+FinanceGuard AI implements a multi-stage security pipeline linking **Mastra Workflows**, **Enkrypt AI**, and **Qdrant Vector Database**:
+
+1. **Vetted Ingestion (Mastra ➔ Enkrypt ➔ Qdrant)**:
+   * During document processing, Mastra chunks the source text.
+   * Before a chunk is embedded and written to Qdrant, it is sent to the Enkrypt AI endpoint to redact any sensitive PII.
+   * Only clean, anonymized texts are stored in the Qdrant database, ensuring compliance standards (CCPA/GDPR) are met at the vector level.
+2. **Safe Semantic Retrieval (Mastra ➔ Enkrypt ➔ Qdrant)**:
+   * When a user queries the Advisor, Mastra routes the prompt through Enkrypt AI's input gate to block prompt injection payloads.
+   * The clean prompt is converted into a deterministic query vector to search Qdrant.
+   * Retrieved vector chunks are packaged by Mastra's state container and sent securely to the LLM.
+3. **Safety Trace Auditing**:
+   * Every step's metadata, prompt safety score, and the Qdrant retrieval parameters are logged together under a single `trace_id` in the LibSQL dashboard database for compliance auditing.
+
+---
+
 ## 🛠️ Technology Stack
 
 | Technology | Purpose | Reason Chosen |
