@@ -20,7 +20,7 @@ Developed for the **HiDevs × Mastra AI Agent Hackathon**, this platform showcas
 
 ![FinanceGuard Banner Placeholder](https://via.placeholder.com/1200x400/101010/888888?text=FinanceGuard+AI+Platform+Interface)
 
-* **🚀 Live Platform URL:** [https://finance-guard-ai.vercel.app](https://finance-guard-ai.vercel.app)
+* **🚀 Live Platform URL:** [https://finance-guard-ai.vercel.app](https://finance-guard-ai.vercel.app/)
 * **💻 GitHub Repository:** [https://github.com/Faishal058/FinanceGuard-AI](https://github.com/Faishal058/FinanceGuard-AI)
 * **🎥 Demonstration Video:** [Watch the Walkthrough](https://youtube.com/watch?placeholder)
 
